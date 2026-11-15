@@ -12,6 +12,7 @@ It is built on the [ARTEX](https://github.com/mhtsec/ARTEX) agent framework: a G
 - **Burp-first dynamic testing** — APK tasks treat Burp Suite proxy traffic as the primary data source. Agents read proxy history and replay requests through the [Burp Suite MCP server](https://portswigger.net/bappstore), with static analysis as a secondary input.
 - **Device control without root** — agents check the device, launch the app and drive its UI (dump, tap, swipe, type, key) over adb. This works on an unrooted Genymotion Android 11 image; Frida instrumentation is used when root is available.
 - **Agentic and deterministic workers** — an LLM planner dispatches workers for runtime observation, SSL-pinning and root-detection checks, app-derived API checks and dependency CVE matching (SCA against OSV.dev), alongside a deterministic assessment pipeline.
+- **Intelligent API security engine** — deterministic, identity-aware API tests the agents drive from captured traffic: endpoint discovery and normalization, an object/dependency graph, IDOR/BOLA differential testing, JWT/authentication checks, financial business logic (amount/limit/currency/idempotency), race/TOCTOU, workflow state machines, mass assignment and SSTI/SQLi injection. Verdicts are decided by response evidence rather than status codes, and confirmed findings auto-file with full reproduction and remediation. See [Intelligent API security testing](#intelligent-api-security-testing).
 - **Evidence-backed findings** — findings link to stored request/response snapshots and other evidence; near-duplicate reports about the same artifact are merged instead of piling up. Findings can be retested in an independent session.
 - **Controlled assessments** — define scope, environment, test accounts (encrypted with AES-GCM) and business rules; import OpenAPI, HAR, prior coverage, ZAP and MobSF results; reconcile coverage and generate a Markdown report.
 - **Guard rails** — every agent tool call passes interception rules that can allow, block or escalate it for human approval; target-asset blocklists and per-task allow/block rules bound the scope.
@@ -64,6 +65,22 @@ Compose builds `android-lab:local` from this source. Back up the database, `data
 For the controlled assessment workflow (scope, imports, coverage reconciliation, manual evidence, reporting) see [the assessment workflow](docs/ASSESSMENT_WORKFLOW.md) and [controlled assessments](docs/CONTROLLED_ASSESSMENTS.md). Test only applications and back ends you are authorized to test.
 
 An HTTP 200 response is not an authorization pass, a scanner returning no alerts is not evidence of security, and a certificate-interception failure is a limitation, not proof that TLS is secure or broken.
+
+## Intelligent API security testing
+
+A deterministic, identity-aware API testing engine runs inside the normal APK task (goals → planner → worker), driven from Burp-captured traffic. The LLM proposes and sequences tests; fixed rules decide each verdict from the server's own responses, so a 2xx is never a finding on its own and false positives are controlled. Confirmed verdicts auto-file into the existing findings pipeline with full evidence — preconditions, reproduction steps, expected vs. actual, impact and remediation.
+
+These are the `mobile_*` worker tools (see [APK penetration testing](docs/APK_PENTEST.md) for the full reference and sequencing):
+
+| Area | Tools (`mobile_…`) | What they confirm |
+| --- | --- | --- |
+| Discovery & modeling | `api_harvest`, `api_graph`, `openapi_ingest` | normalized endpoint inventory; object + producer→consumer dependency graph; documented (inferred) endpoints from an OpenAPI/Swagger spec |
+| Authorization | `identity_set`, `authz_diff`, `authz_sweep`, `authz_expect` | IDOR/BOLA by differential (owner vs. another identity vs. unauthenticated), confirmed by data disclosure, not status; configurable shared-resource/role exceptions |
+| Authentication | `jwt_probe` | JWT `alg:none` / tampered-signature acceptance and `exp` weaknesses |
+| Financial logic | `txn_probe`, `race_probe`, `workflow_set` / `workflow_check` | amount sign/limit, currency and idempotency invariants; race/TOCTOU (double-spend); out-of-order/skipped workflow steps |
+| Input & injection | `schema_fuzz`, `mass_assignment`, `inject_probe` | 5xx on malformed input; privilege-field mass assignment (applied in the response); SSTI (evaluated expression) and error-based SQLi |
+
+Detection quality is measured against seeded ground-truth targets and an OWASP crAPI-modelled suite — precision, recall and false-positive rate per category — and a live crAPI integration harness runs the same deciders against a running instance (`go test ./internal/agent/ -run Eval -v`). The engine reuses the existing identity store, Burp replay and findings pipeline; it adds no new runtime dependencies.
 
 ## Configuration
 
