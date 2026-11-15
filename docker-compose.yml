@@ -1,0 +1,49 @@
+name: android-lab
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: androidlab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Android/.env}
+      POSTGRES_DB: androidlab
+    volumes:
+      - android_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U androidlab -d androidlab"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: "no"
+
+  androidlab:
+    init: true
+    image: android-lab:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ANDROIDLAB_PG_DSN: postgres://androidlab:${POSTGRES_PASSWORD}@postgres:5432/androidlab?sslmode=disable
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      ANDROIDLAB_LLM_PROVIDER: ${ANDROIDLAB_LLM_PROVIDER:-}
+      ANDROIDLAB_LLM_MODEL: ${ANDROIDLAB_LLM_MODEL:-}
+      ANDROIDLAB_LLM_BASE_URL: ${ANDROIDLAB_LLM_BASE_URL:-}
+      ANDROIDLAB_LLM_PROXY: ${ANDROIDLAB_LLM_PROXY:-}
+    ports:
+      - "127.0.0.1:8797:8797"
+      - "127.0.0.1:8798:8798"
+    volumes:
+      - ./data:/app/data
+      - android_identity:/app/identity
+      - ./skills:/app/skills
+    restart: "no"
+    stop_grace_period: 40s
+
+volumes:
+  android_pgdata:
+  android_identity:

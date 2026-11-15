@@ -1,0 +1,78 @@
+package noa
+
+import "testing"
+
+func TestDefaultCountTokens(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want int
+	}{
+		{"empty", "", 0},
+		{"ascii exact multiple", "abcd", 1},
+		{"ascii rounds up", "abcde", 2},
+		{"ascii single", "a", 1},
+		{"cjk one per rune", "\u4e2d\u6587", 2},
+		{"cjk longer", "\u4f60\u597d\u4e16\u754c", 4},
+		{"hiragana", "ひらがな", 4},
+		{"hangul", "한국어", 3},
+		// 4 CJK + 8 ASCII -> 4 + ceil(8/4) = 6
+		{"mixed", "\u8ba4\u8bc1\u65b9\u6848 auth.go", 4 + 2},
+	}
+	for _, c := range cases {
+		if got := DefaultCountTokens(c.in); got != c.want {
+			t.Errorf("%s: DefaultCountTokens(%q) = %d, want %d", c.name, c.in, got, c.want)
+		}
+	}
+}
+
+// Deliberate deviation from upstream: counting is per rune, so an astral-plane
+// character counts once where a UTF-16 implementation would count it twice.
+func TestDefaultCountTokensAstralPlane(t *testing.T) {
+	if got := DefaultCountTokens("🎉🎉🎉🎉"); got != 1 {
+		t.Fatalf("DefaultCountTokens(4 emoji) = %d, want 1 (4 runes / 4)", got)
+	}
+}
+
+func TestEstimateTokensFast(t *testing.T) {
+	cases := map[string]int{"": 0, "abcd": 1, "abcde": 2, "\u4e2d\u6587\u6d4b\u8bd5": 1}
+	for in, want := range cases {
+		if got := EstimateTokensFast(in); got != want {
+			t.Errorf("EstimateTokensFast(%q) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+func TestCountMessageTokens(t *testing.T) {
+	m := CoreMessage{Text: "abcdefgh"}
+	if got := CountMessageTokens(m, nil); got != 2 {
+		t.Fatalf("CountMessageTokens with default counter = %d, want 2", got)
+	}
+	if got := CountMessageTokens(m, func(string) int { return 99 }); got != 99 {
+		t.Fatalf("CountMessageTokens with injected counter = %d, want 99", got)
+	}
+}
+
+func TestIsCJK(t *testing.T) {
+	for _, r := range []rune{'\u4e2d', '\u6587', 'あ', 'ア', '한'} {
+		if !isCJK(r) {
+			t.Errorf("isCJK(%q) = false, want true", r)
+		}
+	}
+	for _, r := range []rune{'a', 'Z', '0', ' ', '\n', '·', '—'} {
+		if isCJK(r) {
+			t.Errorf("isCJK(%q) = true, want false", r)
+		}
+	}
+}
+
+func TestCeilDiv(t *testing.T) {
+	cases := []struct{ n, d, want int }{
+		{0, 4, 0}, {1, 4, 1}, {4, 4, 1}, {5, 4, 2}, {8, 4, 2}, {-3, 4, 0},
+	}
+	for _, c := range cases {
+		if got := ceilDiv(c.n, c.d); got != c.want {
+			t.Errorf("ceilDiv(%d,%d) = %d, want %d", c.n, c.d, got, c.want)
+		}
+	}
+}

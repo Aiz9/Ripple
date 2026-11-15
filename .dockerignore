@@ -1,0 +1,41 @@
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+config.json
+jwt.key
+/identity/
+
+# Runtime state and engagement material — never send into a build context.
+data
+reports
+archive
+transcripts
+*.db
+validation/results
+validation/work
+
+# Build output (the image builds its own binary and web export).
+artex.new*
+artex.old
+artex.failed
+artex.upgrade.json
+/artex
+/androidlab
+/androidlab-dev
+/apkassess
+/apktriage
+**/node_modules
+web/.next
+web/out
+internal/server/webui/dist
+
+# Benchmarks
+bench/kv
+bench/debug
+bench/__pycache__
+bench/.env
+bench/scheduler.py
+bench/entrypoint_v2.sh
+bench/seed_v2.sh

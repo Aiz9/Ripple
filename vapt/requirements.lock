@@ -1,0 +1,12 @@
+# Pinned, reproducible dependency set for the vapt/ package.
+#
+# requirements.txt holds the minimum supported versions (loose ranges); this
+# lock holds the exact versions this tree was validated against, mirroring the
+# validation/requirements.lock convention. Install with:
+#   python3 -m pip install -r vapt/requirements.lock
+#
+# Only three third-party packages are imported by vapt/ (everything else it uses
+# is in the Python standard library): httpx, PyYAML, cryptography.
+httpx==0.28.1
+PyYAML==6.0.3
+cryptography==46.0.5

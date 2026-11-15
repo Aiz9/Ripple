@@ -1,0 +1,16 @@
+{
+  "tests": [
+    {
+      "url": "https://api.example.invalid/api/orders/1001",
+      "method": "GET",
+      "objective": "authorization",
+      "role": "consumer",
+      "parameters": [],
+      "environment": "staging",
+      "revision": "replace-with-the-tested-build",
+      "observed_at": "2026-10-20T08:00:00Z",
+      "outcome": "not_performed",
+      "observation": "SCHEMA EXAMPLE ONLY. Replace this with actual test conditions, controlled account roles, observed behavior and evidence artifact references. No test was performed by this example."
+    }
+  ]
+}

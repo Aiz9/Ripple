@@ -1,0 +1,10 @@
+# Third-party Python packages used by helper scripts in scripts/.
+#
+# Only one script pulls in a non-stdlib dependency:
+#   smoke-caido-built.py  ->  websockets  (Chrome DevTools Protocol smoke client)
+# Every other script in this directory (session.py, score_allsafe.py,
+# check_assessment_secrets.py, the test_*.py, setup-caido.py, smoke-docker.py)
+# uses only the Python standard library.
+#
+# Install with:  python3 -m pip install -r scripts/requirements.txt
+websockets==13.1

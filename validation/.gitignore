@@ -1,0 +1,10 @@
+.venv/
+tools/
+work/
+corpus/
+results/raw/
+*.class
+
+# Large generated decoder outputs remain available locally for review.
+results/differential/*/
+results/mutations/*/

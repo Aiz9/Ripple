@@ -1,0 +1,1811 @@
+[
+  {
+    "id": "scope.build",
+    "section": "01 Pre-engagement and scoping",
+    "title": "Package, build variant and delivery format",
+    "objective": "manifest",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-1"
+    ],
+    "cwe": [],
+    "signals": [
+      "apk_inventory"
+    ],
+    "requires": [
+      "build_context"
+    ],
+    "procedure": "Confirm package(s), debug/release/staging/production variant and APK/AAB/split/Play delivery. Bind evidence to the uploaded hash; do not infer release from a filename."
+  },
+  {
+    "id": "scope.accounts",
+    "section": "01 Pre-engagement and scoping",
+    "title": "Test accounts, banking data and OTP mechanism",
+    "objective": "authentication",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-287"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts"
+    ],
+    "procedure": "Document role-separated test accounts and approved test bank accounts/cards; establish a test OTP mechanism. Keep credential values in the secret store."
+  },
+  {
+    "id": "scope.backend",
+    "section": "01 Pre-engagement and scoping",
+    "title": "Backend host and endpoint authorization",
+    "objective": "api_behavior",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-NETWORK-1"
+    ],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "backend_scope"
+    ],
+    "procedure": "Review discovered hosts and endpoint ownership, exclusions and environment before active testing. Discovery is not permission to attack unrelated hosts."
+  },
+  {
+    "id": "scope.root",
+    "section": "01 Pre-engagement and scoping",
+    "title": "Rooted-device and bypass authorization",
+    "objective": "resilience",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-RESILIENCE-1"
+    ],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "root_approval"
+    ],
+    "procedure": "Record explicit permission before extracting private storage or bypassing root/integrity controls. Record which device and techniques are approved."
+  },
+  {
+    "id": "scope.compliance",
+    "section": "01 Pre-engagement and scoping",
+    "title": "Compliance and testing profile",
+    "objective": "reporting",
+    "layer": "app",
+    "masvs": [],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "compliance"
+    ],
+    "procedure": "Select the applicable regulator, PCI requirements and MAS testing profile. MASVS v2 controls do not contain the older L1/L2 verification levels."
+  },
+  {
+    "id": "scope.tools",
+    "section": "01 Pre-engagement and scoping",
+    "title": "Device, proxy and analysis tool readiness",
+    "objective": "platform_runtime",
+    "layer": "app",
+    "masvs": [],
+    "cwe": [],
+    "signals": [
+      "installed_build",
+      "instrumentation"
+    ],
+    "requires": [],
+    "procedure": "Record selected serial, OS/ABI, tool versions and proxy visibility. Installed executables are not proof that their adapters ran."
+  },
+  {
+    "id": "info.decompile",
+    "section": "02 Information gathering",
+    "title": "DEX, resources and framework-specific code inventory",
+    "objective": "static_analysis",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-4"
+    ],
+    "cwe": [],
+    "signals": [
+      "apk_inventory"
+    ],
+    "requires": [],
+    "procedure": "Inspect DEX/resources with JADX/Apktool and route Dart AOT, JS/Hermes, .NET and native binaries to matching tools. Decompiling the wrapper does not recover all business logic."
+  },
+  {
+    "id": "info.framework",
+    "section": "02 Information gathering",
+    "title": "Framework, runtime and compilation mode",
+    "objective": "static_analysis",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-4"
+    ],
+    "cwe": [],
+    "signals": [
+      "apk_profile"
+    ],
+    "requires": [],
+    "procedure": "Identify JVM/Kotlin/Compose, Flutter, React Native/Hermes, Cordova/Capacitor, .NET/MAUI/Xamarin, Unity and native-library signals. Record engine version as unknown unless verified."
+  },
+  {
+    "id": "info.manifest",
+    "section": "02 Information gathering",
+    "title": "Manifest components, permissions and SDK levels",
+    "objective": "manifest",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-1"
+    ],
+    "cwe": [
+      "CWE-926"
+    ],
+    "signals": [
+      "apk_manifest",
+      "runtime_permissions"
+    ],
+    "requires": [],
+    "procedure": "Inspect declared and effective manifest values, SDK-dependent defaults, exported components and permission guards."
+  },
+  {
+    "id": "info.assets",
+    "section": "02 Information gathering",
+    "title": "Bundled resources and debug snapshots",
+    "objective": "static_analysis",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-4"
+    ],
+    "cwe": [
+      "CWE-540"
+    ],
+    "signals": [
+      "apk_assets"
+    ],
+    "requires": [],
+    "procedure": "Inventory Flutter assets/kernel snapshots, JavaScript bundles/maps, .NET assemblies and native libraries; absence of known names is inconclusive."
+  },
+  {
+    "id": "info.dependencies",
+    "section": "02 Information gathering",
+    "title": "SDK and dependency inventory",
+    "objective": "dependencies",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-3"
+    ],
+    "cwe": [
+      "CWE-1104"
+    ],
+    "signals": [
+      "apk_dependencies"
+    ],
+    "requires": [],
+    "procedure": "Identify analytics, payments, crash SDKs and package versions from an SBOM or verified metadata. A marker alone does not identify a vulnerable version."
+  },
+  {
+    "id": "info.signing",
+    "section": "02 Information gathering",
+    "title": "Signing certificate and build flags",
+    "objective": "manifest",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-CODE-1"
+    ],
+    "cwe": [
+      "CWE-295",
+      "CWE-347"
+    ],
+    "signals": [
+      "apk_manifest"
+    ],
+    "requires": [],
+    "procedure": "Verify APK signature schemes v1 (JAR), v2, v3 (key rotation) and v4 with apksigner; confirm a production release certificate (not debug/test-keys) and that v2/v3 are enabled to block Janus-style DEX prepending. Presence of META-INF entries is not signature verification."
+  },
+  {
+    "id": "static.baseline",
+    "section": "03 Static analysis across build stacks",
+    "title": "Baseline scanner analysis",
+    "objective": "static_analysis",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-4"
+    ],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "scanner_report"
+    ],
+    "procedure": "Run or import hash-bound MobSF results; retain scanner versions and raw output. Treat scanner alerts as candidates."
+  },
+  {
+    "id": "static.compiled",
+    "section": "03 Static analysis across build stacks",
+    "title": "Recover application code with the matching toolchain",
+    "objective": "static_analysis",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-3"
+    ],
+    "cwe": [],
+    "signals": [
+      "apk_profile"
+    ],
+    "requires": [
+      "reverse_engineering"
+    ],
+    "procedure": "Use JADX for DEX, Dart AOT tooling for Flutter, JS/Hermes tools for React Native, assembly tools for .NET, and native disassemblers for ELF. Record unsupported versions."
+  },
+  {
+    "id": "static.secrets",
+    "section": "03 Static analysis across build stacks",
+    "title": "Embedded secrets, internal URLs and keys",
+    "objective": "secrets",
+    "layer": "app",
+    "masvs": [
+      "MASVS-STORAGE-1"
+    ],
+    "cwe": [
+      "CWE-798"
+    ],
+    "signals": [
+      "apk_secrets"
+    ],
+    "requires": [],
+    "procedure": "Inspect strings and recovered code for credentials, keys and URLs. Classify public identifiers/placeholders separately; prove sensitive use without reading unnecessary data."
+  },
+  {
+    "id": "static.pinning",
+    "section": "03 Static analysis across build stacks",
+    "title": "Trust and pinning implementation review",
+    "objective": "network_security",
+    "layer": "app",
+    "masvs": [
+      "MASVS-NETWORK-2"
+    ],
+    "cwe": [
+      "CWE-295"
+    ],
+    "signals": [
+      "apk_pinning"
+    ],
+    "requires": [],
+    "procedure": "Trace active HTTP clients and trust callbacks in every code layer. String references to pinning APIs do not prove enforcement or bypassability."
+  },
+  {
+    "id": "static.dependencies",
+    "section": "03 Static analysis across build stacks",
+    "title": "Vulnerable package/version applicability",
+    "objective": "dependencies",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-3"
+    ],
+    "cwe": [
+      "CWE-1395"
+    ],
+    "signals": [
+      "apk_dependencies"
+    ],
+    "requires": [
+      "sbom"
+    ],
+    "procedure": "Compare verified versions with ecosystem advisories (Maven, pub.dev, npm, NuGet and native dependencies); confirm reachable affected code."
+  },
+  {
+    "id": "static.storage",
+    "section": "03 Static analysis across build stacks",
+    "title": "Storage implementation and key protection",
+    "objective": "local_storage",
+    "layer": "app",
+    "masvs": [
+      "MASVS-STORAGE-1"
+    ],
+    "cwe": [
+      "CWE-922"
+    ],
+    "signals": [
+      "apk_storage"
+    ],
+    "requires": [],
+    "procedure": "Trace secure-storage and preference/database implementation in the actual library version. A package name does not prove Keystore-backed protection."
+  },
+  {
+    "id": "static.channels",
+    "section": "03 Static analysis across build stacks",
+    "title": "Native bridges and platform channel code",
+    "objective": "platform_channels",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-1"
+    ],
+    "cwe": [
+      "CWE-20"
+    ],
+    "signals": [
+      "apk_channels"
+    ],
+    "requires": [],
+    "procedure": "Review MethodChannel/EventChannel, React Native bridges, WebView JS interfaces, Cordova plugins, JNI and managed/native boundaries for validation and authorization."
+  },
+  {
+    "id": "static.debug",
+    "section": "03 Static analysis across build stacks",
+    "title": "Debug artifacts in the distributed build",
+    "objective": "build_hygiene",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-1"
+    ],
+    "cwe": [
+      "CWE-489"
+    ],
+    "signals": [
+      "apk_debug"
+    ],
+    "requires": [],
+    "procedure": "Inspect debug snapshots, source maps, test metadata and development entry points; verify intended release variant before treating artifacts as findings."
+  },
+  {
+    "id": "static.obfuscation",
+    "section": "03 Static analysis across build stacks",
+    "title": "Obfuscation and symbol protection",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-3"
+    ],
+    "cwe": [],
+    "signals": [
+      "apk_profile"
+    ],
+    "requires": [
+      "build_provenance"
+    ],
+    "procedure": "Inspect R8/ProGuard mappings, Dart --obfuscate/--split-debug-info, JS/Hermes and native/managed symbol configuration. Recoverability alone cannot prove build flags."
+  },
+  {
+    "id": "dynamic.layers",
+    "section": "04 Dynamic setup and visibility",
+    "title": "Instrumentation reaches the actual application layer",
+    "objective": "platform_runtime",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-4"
+    ],
+    "cwe": [],
+    "signals": [
+      "instrumentation",
+      "native_runtime"
+    ],
+    "requires": [],
+    "procedure": "Confirm observer capabilities in JVM, Dart/native, JS/Hermes, managed and WebView layers; report partial visibility and missed startup/secondary processes."
+  },
+  {
+    "id": "dynamic.runtime_apis",
+    "section": "04 Dynamic setup and visibility",
+    "title": "Runtime API surface capture",
+    "objective": "network_security",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-4",
+      "MASVS-NETWORK-1"
+    ],
+    "cwe": [],
+    "signals": [
+      "instrumentation",
+      "runtime_network"
+    ],
+    "requires": [
+      "root_approval",
+      "reverse_engineering"
+    ],
+    "procedure": "Enumerate the app's runtime endpoints EXHAUSTIVELY in two authentication states. BEFORE login: launch the app and run mobile_discover_runtime_apis + mobile_traffic_history to capture startup/login-screen requests (unauthenticated surface). Log in reliably (verify the authenticated screen via mobile_ui_dump; retry on failure), then AFTER login drive every major flow and re-capture (authenticated surface). Merge both with the statically extracted URLs into one endpoint inventory tagged by source and auth-state; run mobile_api_harvest to normalize the captured traffic into deduped, parameterized endpoints (object ids collapsed to {id}) with their params and auth requirement in the inventory, and mobile_api_graph to map objects and producer->consumer id dependencies (endpoints that consume externally-produced ids are prime BOLA targets). If an OpenAPI/Swagger spec is recovered (api-docs/swagger.json in the app or backend), run mobile_openapi_ingest to add the documented (inferred) endpoints and diff them against the observed inventory — documented-but-unobserved endpoints to exercise, observed-but-undocumented ones are shadow APIs. This feeds the OWASP/business-logic testing phases. Mark blocked (not failed) when the device lacks root."
+  },
+  {
+    "id": "dynamic.repackage",
+    "section": "04 Dynamic setup and visibility",
+    "title": "Approved framework-specific repackaging or hooking",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-2"
+    ],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "bypass_approval",
+      "reverse_engineering"
+    ],
+    "procedure": "If approved, preserve the original hash, tool version and patch recipe. Flutter engine compatibility varies; never assume Reflutter restores source or enables JIT on every release."
+  },
+  {
+    "id": "dynamic.native_tls",
+    "section": "04 Dynamic setup and visibility",
+    "title": "Native TLS interception setup",
+    "objective": "network_security",
+    "layer": "app",
+    "masvs": [
+      "MASVS-NETWORK-2"
+    ],
+    "cwe": [
+      "CWE-295"
+    ],
+    "signals": [],
+    "requires": [
+      "bypass_approval",
+      "proxy_capture"
+    ],
+    "procedure": "Choose an engine-compatible, approved technique for native/Dart TLS. Record whether interception succeeded and which validation behavior the patch changed."
+  },
+  {
+    "id": "dynamic.clients",
+    "section": "04 Dynamic setup and visibility",
+    "title": "Client-specific proxy and trust behavior",
+    "objective": "network_security",
+    "layer": "app",
+    "masvs": [
+      "MASVS-NETWORK-2"
+    ],
+    "cwe": [
+      "CWE-295"
+    ],
+    "signals": [
+      "runtime_network",
+      "native_runtime"
+    ],
+    "requires": [
+      "proxy_capture"
+    ],
+    "procedure": "Identify Dio/http, OkHttp, Cronet, WebView and native clients actually used. JVM hooks and OS proxy settings may miss custom/native stacks."
+  },
+  {
+    "id": "dynamic.visibility",
+    "section": "04 Dynamic setup and visibility",
+    "title": "Traffic visibility and coverage baseline",
+    "objective": "network_security",
+    "layer": "app",
+    "masvs": [
+      "MASVS-NETWORK-1"
+    ],
+    "cwe": [],
+    "signals": [
+      "runtime_network",
+      "native_runtime"
+    ],
+    "requires": [
+      "proxy_capture"
+    ],
+    "procedure": "Capture one documented interaction and reconcile proxy/packet traffic with observer events. No events and failed interception are limitations, never security passes."
+  },
+  {
+    "id": "network.pinning",
+    "section": "05 Network and backend API security",
+    "title": "Pinning implementation and strength",
+    "objective": "network_security",
+    "layer": "app",
+    "masvs": [
+      "MASVS-NETWORK-2"
+    ],
+    "cwe": [
+      "CWE-295"
+    ],
+    "signals": [
+      "tls_validation"
+    ],
+    "requires": [
+      "proxy_capture"
+    ],
+    "procedure": "Compare normal and controlled intercepted connections to verify certificate/public-key pinning; include rotation and backup pins."
+  },
+  {
+    "id": "network.bypass",
+    "section": "05 Network and backend API security",
+    "title": "Pinning bypass resistance",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-4"
+    ],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "bypass_approval",
+      "proxy_capture"
+    ],
+    "procedure": "Compare approved hook, engine patch, controlled CA and proxy techniques against a baseline. Record each outcome and modified artifact hash."
+  },
+  {
+    "id": "network.cleartext",
+    "section": "05 Network and backend API security",
+    "title": "Cleartext policy and actual transmission",
+    "objective": "network_security",
+    "layer": "app",
+    "masvs": [
+      "MASVS-NETWORK-1"
+    ],
+    "cwe": [
+      "CWE-319"
+    ],
+    "signals": [
+      "apk_manifest",
+      "runtime_network",
+      "native_runtime"
+    ],
+    "requires": [],
+    "procedure": "Correlate manifest/network-security configuration with wire evidence. HTTP literals or client calls alone do not prove sensitive data exposure."
+  },
+  {
+    "id": "network.tls",
+    "section": "05 Network and backend API security",
+    "title": "Backend TLS versions and ciphers",
+    "objective": "network_security",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-NETWORK-1"
+    ],
+    "cwe": [
+      "CWE-327"
+    ],
+    "signals": [],
+    "requires": [
+      "backend_scope"
+    ],
+    "procedure": "Probe approved hosts with a bounded TLS scanner; retain handshake evidence for each protocol/cipher conclusion."
+  },
+  {
+    "id": "network.certificates",
+    "section": "05 Network and backend API security",
+    "title": "Certificate chain, hostname and expiry validation",
+    "objective": "network_security",
+    "layer": "app",
+    "masvs": [
+      "MASVS-NETWORK-1"
+    ],
+    "cwe": [
+      "CWE-295"
+    ],
+    "signals": [
+      "tls_validation"
+    ],
+    "requires": [
+      "proxy_capture"
+    ],
+    "procedure": "Use controlled self-signed, wrong-host and expired certificates. Distinguish pinning-related inspection limits from certificate validation results."
+  },
+  {
+    "id": "network.data",
+    "section": "05 Network and backend API security",
+    "title": "Sensitive fields and data minimization",
+    "objective": "privacy",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-PRIVACY-1"
+    ],
+    "cwe": [
+      "CWE-200"
+    ],
+    "signals": [],
+    "requires": [
+      "proxy_capture",
+      "test_accounts"
+    ],
+    "procedure": "Inspect approved test traffic for PAN/CVV/PII and unnecessary fields. TLS and any additional field encryption must be evaluated against the threat model; lack of field encryption alone is not a vulnerability."
+  },
+  {
+    "id": "network.versions",
+    "section": "05 Network and backend API security",
+    "title": "Reachable deprecated API versions",
+    "objective": "api_behavior",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-284"
+    ],
+    "signals": [],
+    "requires": [
+      "backend_scope"
+    ],
+    "procedure": "Compare documented versions with observed routes and approved deployment scope; validate exposure and authorization on legacy versions."
+  },
+  {
+    "id": "network.authorization",
+    "section": "05 Network and backend API security",
+    "title": "Object and function authorization, BOLA/BFLA",
+    "objective": "authorization",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-639"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow"
+    ],
+    "procedure": "Use two controlled owners and role-separated accounts; compare authorized/unauthorized responses and server-side effects on seeded objects. Register the owners/roles with mobile_identity_set, then run mobile_authz_sweep (or mobile_authz_diff for a single case) to decide each deterministically: it replays the owner's request as every other identity and unauthenticated and flags only actual disclosure or mutation, never a bare 2xx. Declare legitimately-shared/admin-accessible endpoints with mobile_authz_expect so expected access is not reported. Confirmed results auto-file as findings."
+  },
+  {
+    "id": "network.validation",
+    "section": "05 Network and backend API security",
+    "title": "Injection, mass assignment and excessive data",
+    "objective": "input_validation",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-PLATFORM-2"
+    ],
+    "cwe": [
+      "CWE-20"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow"
+    ],
+    "procedure": "Use documented schemas and seeded objects for bounded validation tests; verify actual impact rather than treating reflected input as injection. Run mobile_schema_fuzz on a captured JSON request to mutate each field against its type (wrong type, null, removal, oversized) and flag 5xx server errors (input reaching an unhandled path); a clean 4xx is correct rejection. Run mobile_mass_assignment on create/update requests to inject privilege fields the request omitted (role, is_admin, verified, balance, status); a finding only when the response shows the injected value was applied. Run mobile_inject_probe on request parameters to confirm SSTI (evaluated-expression product in the response) and error-based SQLi (leaked DB error signature) — confirmed by evidence, not status."
+  },
+  {
+    "id": "network.rate",
+    "section": "05 Network and backend API security",
+    "title": "Rate and abuse controls",
+    "objective": "authentication",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-307"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "transaction_approval"
+    ],
+    "procedure": "Agree on test thresholds and lockout recovery; record the permitted request rate and observed enforcement without stressing production."
+  },
+  {
+    "id": "auth.login",
+    "section": "06 Authentication and sessions",
+    "title": "Login abuse, lockout and CAPTCHA",
+    "objective": "authentication",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-307"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "transaction_approval"
+    ],
+    "procedure": "Use approved test users and bounded attempts; verify lockout/CAPTCHA server enforcement and recovery."
+  },
+  {
+    "id": "auth.pin",
+    "section": "06 Authentication and sessions",
+    "title": "PIN/MPIN enrollment and verification",
+    "objective": "authentication",
+    "layer": "app",
+    "masvs": [
+      "MASVS-AUTH-2"
+    ],
+    "cwe": [
+      "CWE-307"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow"
+    ],
+    "procedure": "Verify enrollment, retry limits and where the decision is enforced. Test a seeded PIN workflow without exposing real customer credentials."
+  },
+  {
+    "id": "auth.biometric",
+    "section": "06 Authentication and sessions",
+    "title": "Biometric authentication and key binding",
+    "objective": "authentication",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-AUTH-2"
+    ],
+    "cwe": [
+      "CWE-287"
+    ],
+    "signals": [
+      "runtime_biometrics"
+    ],
+    "requires": [
+      "test_accounts"
+    ],
+    "procedure": "Verify BiometricPrompt/CryptoObject and Keystore authorization requirements. Observing an API invocation does not prove protection against boolean bypass."
+  },
+  {
+    "id": "auth.otp",
+    "section": "06 Authentication and sessions",
+    "title": "OTP validity, reuse and retry controls",
+    "objective": "authentication",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-287"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "otp",
+      "transaction_approval"
+    ],
+    "procedure": "Use the approved test OTP mechanism for expiry, replay, bounded retries and transaction binding; assess SMS leakage separately."
+  },
+  {
+    "id": "auth.tokens",
+    "section": "06 Authentication and sessions",
+    "title": "Token storage, expiry, rotation and logout",
+    "objective": "token_management",
+    "layer": "app",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-613"
+    ],
+    "signals": [
+      "runtime_keystore",
+      "runtime_storage_modes"
+    ],
+    "requires": [
+      "test_accounts",
+      "documented_workflow"
+    ],
+    "procedure": "Compare storage and replay behavior before/after expiry, refresh, logout and account switch using test sessions. If sessions use JWTs, run mobile_jwt_probe: it decodes the token (alg:none, missing/expired/over-long exp, HS/RS confusion) and actively replays an alg:none and a tampered-signature variant — a forged token accepted while the genuine one is accepted confirms a signature-verification bypass (auto-filed critical)."
+  },
+  {
+    "id": "auth.sessions",
+    "section": "06 Authentication and sessions",
+    "title": "Session fixation and concurrent devices",
+    "objective": "session_security",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-384"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow"
+    ],
+    "procedure": "Record session identities before/after login and test approved concurrent-session policy on separate test devices."
+  },
+  {
+    "id": "auth.recovery",
+    "section": "06 Authentication and sessions",
+    "title": "Password/MPIN and account recovery",
+    "objective": "authentication",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-640"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow"
+    ],
+    "procedure": "Exercise seeded recovery flows; verify identity binding, token expiry, reuse and invalidation."
+  },
+  {
+    "id": "auth.stepup",
+    "section": "06 Authentication and sessions",
+    "title": "Step-up authentication for high-risk actions",
+    "objective": "authentication",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-3"
+    ],
+    "cwe": [
+      "CWE-306"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "transaction_approval"
+    ],
+    "procedure": "Verify transfers, beneficiaries and limit changes require the documented fresh authorization on the server, including replay and stale-session cases. Use mobile_txn_probe to test transaction-limit bypass deterministically (amount over the configured max_amount) — a finding only when the server accepts it. Model the multi-step flow with mobile_workflow_set (ordered states + correlation field), drive a step out of order (replay a later step without its prerequisite), then mobile_workflow_check to confirm whether the server accepted the skipped-prerequisite transition."
+  },
+  {
+    "id": "storage.secure",
+    "section": "07 Local data and privacy",
+    "title": "Actual secure storage and Keystore backing",
+    "objective": "local_storage",
+    "layer": "app",
+    "masvs": [
+      "MASVS-STORAGE-1"
+    ],
+    "cwe": [
+      "CWE-922"
+    ],
+    "signals": [
+      "apk_storage",
+      "runtime_keystore"
+    ],
+    "requires": [
+      "test_accounts"
+    ],
+    "procedure": "Trace the selected secure-storage implementation/version and key lifecycle. EncryptedSharedPreferences is not the only valid secure design."
+  },
+  {
+    "id": "storage.private",
+    "section": "07 Local data and privacy",
+    "title": "Private app files, preferences, databases and caches",
+    "objective": "local_storage",
+    "layer": "app",
+    "masvs": [
+      "MASVS-STORAGE-1"
+    ],
+    "cwe": [
+      "CWE-312"
+    ],
+    "signals": [
+      "run_as_access",
+      "sandbox_boundary"
+    ],
+    "requires": [
+      "root_approval",
+      "test_accounts"
+    ],
+    "procedure": "Inspect only the selected package's seeded test data with approved privilege. Record path, permissions and redacted evidence without exporting unrelated data."
+  },
+  {
+    "id": "storage.pii",
+    "section": "07 Local data and privacy",
+    "title": "Sensitive values persisted locally",
+    "objective": "privacy",
+    "layer": "app",
+    "masvs": [
+      "MASVS-STORAGE-1"
+    ],
+    "cwe": [
+      "CWE-312"
+    ],
+    "signals": [],
+    "requires": [
+      "root_approval",
+      "test_accounts"
+    ],
+    "procedure": "Search seeded account numbers, balances, tokens, PIN-related data, statements and KYC artifacts; distinguish sensitive content from identifiers."
+  },
+  {
+    "id": "storage.database",
+    "section": "07 Local data and privacy",
+    "title": "Database encryption and key separation",
+    "objective": "local_storage",
+    "layer": "app",
+    "masvs": [
+      "MASVS-STORAGE-1"
+    ],
+    "cwe": [
+      "CWE-311"
+    ],
+    "signals": [
+      "apk_storage"
+    ],
+    "requires": [
+      "root_approval",
+      "test_accounts"
+    ],
+    "procedure": "Inspect actual database bytes and key location; a SQLite/SQLCipher reference alone proves neither encryption nor exposure."
+  },
+  {
+    "id": "storage.logs",
+    "section": "07 Local data and privacy",
+    "title": "Sensitive data in runtime logs",
+    "objective": "logging",
+    "layer": "app",
+    "masvs": [
+      "MASVS-STORAGE-2"
+    ],
+    "cwe": [
+      "CWE-532"
+    ],
+    "signals": [
+      "runtime_logging"
+    ],
+    "requires": [],
+    "procedure": "Exercise sensitive test flows and correlate PID-filtered logs. Report redacted patterns and validate actual sensitivity."
+  },
+  {
+    "id": "storage.screens",
+    "section": "07 Local data and privacy",
+    "title": "Screenshots and task-switcher privacy",
+    "objective": "privacy",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-3"
+    ],
+    "cwe": [
+      "CWE-200"
+    ],
+    "signals": [
+      "runtime_screen"
+    ],
+    "requires": [],
+    "procedure": "Inspect FLAG_SECURE on visited sensitive screens and test actual screenshots/recents behavior on supported OS versions."
+  },
+  {
+    "id": "storage.clipboard",
+    "section": "07 Local data and privacy",
+    "title": "Clipboard exposure and clearing",
+    "objective": "privacy",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-STORAGE-2"
+    ],
+    "cwe": [
+      "CWE-200"
+    ],
+    "signals": [
+      "runtime_clipboard"
+    ],
+    "requires": [],
+    "procedure": "Observe clipboard API use and test seeded OTP/account-field copy/clear behavior; never capture clipboard contents from unrelated apps."
+  },
+  {
+    "id": "storage.input",
+    "section": "07 Local data and privacy",
+    "title": "Keyboard, autofill and sensitive fields",
+    "objective": "privacy",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-3"
+    ],
+    "cwe": [
+      "CWE-200"
+    ],
+    "signals": [
+      "runtime_input"
+    ],
+    "requires": [],
+    "procedure": "Inspect password/PIN input settings and verify keyboard learning/autofill behavior. Widget flags alone do not cover custom Flutter/JS-rendered inputs."
+  },
+  {
+    "id": "storage.crash",
+    "section": "07 Local data and privacy",
+    "title": "Crash, ANR and analytics data leakage",
+    "objective": "privacy",
+    "layer": "app",
+    "masvs": [
+      "MASVS-PRIVACY-1"
+    ],
+    "cwe": [
+      "CWE-532"
+    ],
+    "signals": [
+      "apk_dependencies"
+    ],
+    "requires": [
+      "proxy_capture",
+      "test_accounts"
+    ],
+    "procedure": "Review controlled crash/ANR telemetry and analytics payloads using seeded values; avoid collecting real customer data."
+  },
+  {
+    "id": "storage.backup",
+    "section": "07 Local data and privacy",
+    "title": "Sensitive backup and device-transfer behavior",
+    "objective": "local_storage",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-STORAGE-2"
+    ],
+    "cwe": [
+      "CWE-530"
+    ],
+    "signals": [
+      "backup_policy",
+      "apk_manifest"
+    ],
+    "requires": [
+      "root_approval",
+      "test_accounts"
+    ],
+    "procedure": "Test inclusion/exclusion rules and actual seeded data on supported Android versions. allowBackup=false is not universal proof against device-to-device transfers."
+  },
+  {
+    "id": "crypto.inventory",
+    "section": "08 Cryptography",
+    "title": "Crypto libraries and actual algorithms",
+    "objective": "cryptography",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CRYPTO-1"
+    ],
+    "cwe": [
+      "CWE-327"
+    ],
+    "signals": [
+      "apk_crypto",
+      "runtime_crypto"
+    ],
+    "requires": [],
+    "procedure": "Inventory JVM, Dart, JS, managed and native crypto; correlate references with runtime use and protected data."
+  },
+  {
+    "id": "crypto.keys",
+    "section": "08 Cryptography",
+    "title": "Hardcoded keys, IVs and key reuse",
+    "objective": "cryptography",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CRYPTO-2"
+    ],
+    "cwe": [
+      "CWE-321"
+    ],
+    "signals": [
+      "apk_secrets"
+    ],
+    "requires": [
+      "reverse_engineering"
+    ],
+    "procedure": "Trace recovered constants to actual key/IV use; do not classify public keys, sample data or algorithm names as exposed secrets."
+  },
+  {
+    "id": "crypto.algorithms",
+    "section": "08 Cryptography",
+    "title": "Weak algorithms, modes and static IVs",
+    "objective": "cryptography",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CRYPTO-1"
+    ],
+    "cwe": [
+      "CWE-327"
+    ],
+    "signals": [
+      "runtime_crypto",
+      "apk_crypto"
+    ],
+    "requires": [],
+    "procedure": "Validate DES/RC4/ECB, weak hashes and static IV usage in a security-sensitive context. RSA/ECB transformation naming is not symmetric ECB encryption."
+  },
+  {
+    "id": "crypto.random",
+    "section": "08 Cryptography",
+    "title": "Security-sensitive random generation",
+    "objective": "cryptography",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CRYPTO-1"
+    ],
+    "cwe": [
+      "CWE-338"
+    ],
+    "signals": [
+      "apk_random",
+      "runtime_random"
+    ],
+    "requires": [
+      "reverse_engineering"
+    ],
+    "procedure": "Trace token/key/nonce generation to a CSPRNG. A java.util.Random or Dart Random reference alone does not establish security-sensitive use."
+  },
+  {
+    "id": "crypto.keystore",
+    "section": "08 Cryptography",
+    "title": "Key lifecycle and platform protection",
+    "objective": "cryptography",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-CRYPTO-2"
+    ],
+    "cwe": [
+      "CWE-320"
+    ],
+    "signals": [
+      "runtime_keystore",
+      "apk_storage"
+    ],
+    "requires": [],
+    "procedure": "Verify Android Keystore provider, access policy, invalidation and exportability; record hardware backing only when attested."
+  },
+  {
+    "id": "platform.channels",
+    "section": "09 Native and platform boundaries",
+    "title": "Every application bridge boundary",
+    "objective": "platform_channels",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-1"
+    ],
+    "cwe": [
+      "CWE-20"
+    ],
+    "signals": [
+      "apk_channels"
+    ],
+    "requires": [],
+    "procedure": "Audit all discovered native/JNI/Flutter/RN/Cordova/.NET bridge implementations and their caller/argument validation."
+  },
+  {
+    "id": "platform.components",
+    "section": "09 Native and platform boundaries",
+    "title": "Exported components and content providers",
+    "objective": "exported_components",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-1"
+    ],
+    "cwe": [
+      "CWE-926"
+    ],
+    "signals": [
+      "apk_manifest"
+    ],
+    "requires": [
+      "documented_workflow"
+    ],
+    "procedure": "Invoke approved components with controlled inputs and verify authorization/read/write guards. An exported launcher is not inherently vulnerable."
+  },
+  {
+    "id": "platform.links",
+    "section": "09 Native and platform boundaries",
+    "title": "Deep links, App Links and routing",
+    "objective": "deep_links",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-1"
+    ],
+    "cwe": [
+      "CWE-939"
+    ],
+    "signals": [
+      "apk_deeplinks"
+    ],
+    "requires": [
+      "documented_workflow"
+    ],
+    "procedure": "Compare manifest intent filters with verified link ownership, navigation and authentication requirements; test controlled redirect/injection cases."
+  },
+  {
+    "id": "platform.webviews",
+    "section": "09 Native and platform boundaries",
+    "title": "WebView navigation, JS bridges and content policy",
+    "objective": "webviews",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-2"
+    ],
+    "cwe": [
+      "CWE-749"
+    ],
+    "signals": [
+      "runtime_webviews",
+      "apk_webview"
+    ],
+    "requires": [],
+    "procedure": "Test allowed navigation, JavaScript bridge exposure, file access and mixed content with approved controlled content."
+  },
+  {
+    "id": "platform.intents",
+    "section": "09 Native and platform boundaries",
+    "title": "Intent and inter-app information exposure",
+    "objective": "exported_components",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-1"
+    ],
+    "cwe": [
+      "CWE-927"
+    ],
+    "signals": [
+      "apk_manifest"
+    ],
+    "requires": [
+      "documented_workflow"
+    ],
+    "procedure": "Trace explicit/implicit intents, grants and extras; use an approved receiving test app to confirm any disclosure."
+  },
+  {
+    "id": "platform.permissions",
+    "section": "09 Native and platform boundaries",
+    "title": "Permission necessity and use",
+    "objective": "manifest",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-1"
+    ],
+    "cwe": [
+      "CWE-250"
+    ],
+    "signals": [
+      "apk_manifest",
+      "runtime_permissions"
+    ],
+    "requires": [
+      "documented_workflow"
+    ],
+    "procedure": "Compare declared/granted permissions against documented functions and observed use; do not auto-classify every dangerous permission as a finding."
+  },
+  {
+    "id": "resilience.root",
+    "section": "10 Resilience and integrity",
+    "title": "Root detection and server-sensitive decisions",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-1"
+    ],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "root_approval",
+      "test_accounts"
+    ],
+    "procedure": "Compare approved rooted/non-rooted environments and sensitive server actions against the documented threat model."
+  },
+  {
+    "id": "resilience.emulator",
+    "section": "10 Resilience and integrity",
+    "title": "Emulator detection and expected behavior",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-1"
+    ],
+    "cwe": [],
+    "signals": [
+      "installed_build"
+    ],
+    "requires": [
+      "documented_workflow"
+    ],
+    "procedure": "Compare emulator/device behavior and documented policy; launching successfully in Genymotion alone is not a vulnerability."
+  },
+  {
+    "id": "resilience.debugger",
+    "section": "10 Resilience and integrity",
+    "title": "Debugger detection and enforcement",
+    "objective": "resilience",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-RESILIENCE-4"
+    ],
+    "cwe": [
+      "CWE-489"
+    ],
+    "signals": [
+      "runtime_debugging"
+    ],
+    "requires": [
+      "bypass_approval"
+    ],
+    "procedure": "Test approved debugger attachment and compare actual security-sensitive behavior; debuggable=false is not an anti-debugging test."
+  },
+  {
+    "id": "resilience.hooks",
+    "section": "10 Resilience and integrity",
+    "title": "Frida/Xposed and instrumentation resistance",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-4"
+    ],
+    "cwe": [],
+    "signals": [
+      "instrumentation"
+    ],
+    "requires": [
+      "bypass_approval"
+    ],
+    "procedure": "Compare baseline and approved instrumentation techniques; attachment alone cannot establish complete RASP effectiveness."
+  },
+  {
+    "id": "resilience.signature",
+    "section": "10 Resilience and integrity",
+    "title": "Signature verification and repackaging detection",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-2"
+    ],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "bypass_approval"
+    ],
+    "procedure": "Re-sign a controlled copy and verify client/server integrity decisions, preserving both artifact hashes and signing identities."
+  },
+  {
+    "id": "resilience.native",
+    "section": "10 Resilience and integrity",
+    "title": "Compiled-code patch and hook resistance",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-2"
+    ],
+    "cwe": [],
+    "signals": [
+      "apk_profile"
+    ],
+    "requires": [
+      "bypass_approval",
+      "reverse_engineering"
+    ],
+    "procedure": "Test approved patches to the actual Dart/native/Hermes/managed layer and document detection, compatibility and limitations."
+  },
+  {
+    "id": "resilience.response",
+    "section": "10 Resilience and integrity",
+    "title": "Behavior after integrity compromise",
+    "objective": "resilience",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-RESILIENCE-1"
+    ],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "bypass_approval"
+    ],
+    "procedure": "Verify the agreed restrict/block/warn response and server-side handling of sensitive actions. Expected behavior comes from the app threat model."
+  },
+  {
+    "id": "business.transfer",
+    "section": "11 Banking and business logic",
+    "title": "Server-side transfer limits",
+    "objective": "business_logic",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-3"
+    ],
+    "cwe": [
+      "CWE-602"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "transaction_approval"
+    ],
+    "procedure": "Use seeded balances and documented limits; test boundary amounts and verify server-ledger outcomes and rollback."
+  },
+  {
+    "id": "business.beneficiary",
+    "section": "11 Banking and business logic",
+    "title": "Beneficiary ownership and authorization",
+    "objective": "business_logic",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-639"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "transaction_approval"
+    ],
+    "procedure": "Compare two controlled owners for beneficiary addition/deletion and step-up checks. Use mobile_identity_set + mobile_authz_sweep to confirm deterministically that cross-owner beneficiary add/delete is rejected."
+  },
+  {
+    "id": "business.replay",
+    "section": "11 Banking and business logic",
+    "title": "Transaction replay and idempotency",
+    "objective": "business_logic",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-3"
+    ],
+    "cwe": [
+      "CWE-294"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "transaction_approval"
+    ],
+    "procedure": "Resubmit one approved test transaction and confirm ledger/idempotency effects without real fund movement. Use mobile_txn_probe with the request's idempotency field (plus amount/limit/currency invariants) to resubmit deterministically; it flags only when the server accepts a duplicate or invariant-breaking request, and distinguishes a correctly idempotent already-processed response. For concurrency/TOCTOU (double-spend, limit bypass, coupon stacking), run mobile_race_probe to fire K identical copies in parallel; a finding only when more acceptances than legitimate occur."
+  },
+  {
+    "id": "business.races",
+    "section": "11 Banking and business logic",
+    "title": "Concurrent balance and transaction enforcement",
+    "objective": "business_logic",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-3"
+    ],
+    "cwe": [
+      "CWE-362"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "transaction_approval"
+    ],
+    "procedure": "Use explicitly approved low-concurrency races and seeded accounts; verify ledger consistency and recovery."
+  },
+  {
+    "id": "business.idor",
+    "section": "11 Banking and business logic",
+    "title": "Account, statement, beneficiary and application IDOR",
+    "objective": "authorization",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-639"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow"
+    ],
+    "procedure": "Use owned test objects across accounts and roles; confirm access and mutations are rejected where required. Drive this with mobile_authz_sweep / mobile_authz_diff over the owned objects (identities from mobile_identity_set); a 2xx alone is not proof — require disclosure or unauthorized-mutation evidence."
+  },
+  {
+    "id": "business.amounts",
+    "section": "11 Banking and business logic",
+    "title": "Negative, fractional and overflow amounts",
+    "objective": "input_validation",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-PLATFORM-2"
+    ],
+    "cwe": [
+      "CWE-20"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "transaction_approval"
+    ],
+    "procedure": "Evaluate documented amount bounds and precision with seeded transactions; check server and ledger results."
+  },
+  {
+    "id": "business.currency",
+    "section": "11 Banking and business logic",
+    "title": "Currency and locale manipulation",
+    "objective": "business_logic",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-3"
+    ],
+    "cwe": [
+      "CWE-840"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "transaction_approval"
+    ],
+    "procedure": "Test declared currency/rate/locale invariants and server normalization with non-production accounts."
+  },
+  {
+    "id": "business.kyc",
+    "section": "11 Banking and business logic",
+    "title": "KYC file type, paths and document authorization",
+    "objective": "file_handling",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-PLATFORM-2"
+    ],
+    "cwe": [
+      "CWE-434"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "transaction_approval"
+    ],
+    "procedure": "Upload approved harmless fixtures; verify file validation, path handling and cross-user document access."
+  },
+  {
+    "id": "business.cards",
+    "section": "11 Banking and business logic",
+    "title": "Card block, limits and PIN authorization",
+    "objective": "authorization",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-3"
+    ],
+    "cwe": [
+      "CWE-862"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow",
+      "transaction_approval"
+    ],
+    "procedure": "Use issuer-provided test cards and documented role/step-up rules for each card operation."
+  },
+  {
+    "id": "business.statements",
+    "section": "11 Banking and business logic",
+    "title": "Statement/PDF injection and access control",
+    "objective": "file_handling",
+    "layer": "backend_api",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-639"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "documented_workflow"
+    ],
+    "procedure": "Generate seeded statements and compare owner/role access; use harmless validation markers in approved fields."
+  },
+  {
+    "id": "build.release",
+    "section": "12 Build and release hygiene",
+    "title": "Release flags and debug/test endpoints",
+    "objective": "build_hygiene",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-1"
+    ],
+    "cwe": [
+      "CWE-489"
+    ],
+    "signals": [
+      "apk_debug",
+      "runtime_debugging"
+    ],
+    "requires": [
+      "build_context"
+    ],
+    "procedure": "Verify release provenance, debuggable/testOnly, debug banners and reachable development endpoints; test endpoint reachability only in scope."
+  },
+  {
+    "id": "build.backup",
+    "section": "12 Build and release hygiene",
+    "title": "Release backup and transfer policy",
+    "objective": "build_hygiene",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-STORAGE-2"
+    ],
+    "cwe": [
+      "CWE-530"
+    ],
+    "signals": [
+      "apk_manifest",
+      "backup_policy"
+    ],
+    "requires": [
+      "build_context"
+    ],
+    "procedure": "Review the declared backup setting together with extraction rules and actual supported-OS behavior."
+  },
+  {
+    "id": "build.obfuscation",
+    "section": "12 Build and release hygiene",
+    "title": "Build-time obfuscation evidence",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-3"
+    ],
+    "cwe": [],
+    "signals": [
+      "apk_profile"
+    ],
+    "requires": [
+      "build_provenance"
+    ],
+    "procedure": "Review verified build outputs and symbol/mapping handling for each detected language/runtime; APK inspection alone cannot confirm all compiler flags."
+  },
+  {
+    "id": "build.devtools",
+    "section": "12 Build and release hygiene",
+    "title": "Exposed development/VM service interfaces",
+    "objective": "build_hygiene",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-1"
+    ],
+    "cwe": [
+      "CWE-489"
+    ],
+    "signals": [
+      "apk_debug",
+      "native_runtime"
+    ],
+    "requires": [],
+    "procedure": "Inspect known development artifacts and approved runtime listeners; static strings or an idle run cannot establish that no service is exposed."
+  },
+  {
+    "id": "build.telemetry",
+    "section": "12 Build and release hygiene",
+    "title": "Production analytics and crash confidentiality",
+    "objective": "privacy",
+    "layer": "app",
+    "masvs": [
+      "MASVS-PRIVACY-1"
+    ],
+    "cwe": [
+      "CWE-200"
+    ],
+    "signals": [
+      "apk_dependencies"
+    ],
+    "requires": [
+      "proxy_capture",
+      "test_accounts"
+    ],
+    "procedure": "Verify production telemetry configuration and captured seeded events across SDKs and code layers."
+  },
+  {
+    "id": "report.mapping",
+    "section": "13 Reporting and retesting",
+    "title": "Finding MASVS v2 and CWE mapping",
+    "objective": "reporting",
+    "layer": "app",
+    "masvs": [],
+    "cwe": [],
+    "signals": [],
+    "requires": [],
+    "procedure": "Assign verified control IDs and CWE where relevant; pre-engagement and backend-only controls may require separate ASVS/API mappings rather than a fabricated MASVS equivalence."
+  },
+  {
+    "id": "report.reproduction",
+    "section": "13 Reporting and retesting",
+    "title": "Repeatable evidence and tool/patch provenance",
+    "objective": "reporting",
+    "layer": "app",
+    "masvs": [],
+    "cwe": [],
+    "signals": [],
+    "requires": [],
+    "procedure": "Include original/modified hashes, device/OS, tool versions, commands, raw exchanges and actual results. Do not invent execution evidence."
+  },
+  {
+    "id": "report.impact",
+    "section": "13 Reporting and retesting",
+    "title": "Severity, financial impact and regulatory context",
+    "objective": "reporting",
+    "layer": "backend_api",
+    "masvs": [],
+    "cwe": [],
+    "signals": [],
+    "requires": [
+      "documented_workflow"
+    ],
+    "procedure": "Explain CVSS and business impact using validated financial/PII exposure and the agreed regulatory context; no automatic compliance certification."
+  },
+  {
+    "id": "report.owners",
+    "section": "13 Reporting and retesting",
+    "title": "Remediation ownership and layer separation",
+    "objective": "reporting",
+    "layer": "app",
+    "masvs": [],
+    "cwe": [],
+    "signals": [],
+    "requires": [],
+    "procedure": "Assign app/business code, native/platform integration and backend API owners; deduplicate cross-layer causes and record retest status."
+  },
+  {
+    "id": "platform.pendingintent",
+    "section": "09 Native and platform boundaries",
+    "title": "PendingIntent mutability and broadcast safety",
+    "objective": "exported_components",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-1"
+    ],
+    "cwe": [
+      "CWE-927"
+    ],
+    "signals": [
+      "apk_manifest"
+    ],
+    "requires": [],
+    "procedure": "Review PendingIntent creation: confirm FLAG_IMMUTABLE is set (or the wrapped Intent is explicit when mutability is genuinely required), and that implicit broadcasts carry no sensitive extras (use setPackage for intra-app messaging)."
+  },
+  {
+    "id": "platform.provider_traversal",
+    "section": "09 Native and platform boundaries",
+    "title": "Content provider SQL injection and path traversal",
+    "objective": "exported_components",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-2"
+    ],
+    "cwe": [
+      "CWE-22",
+      "CWE-89"
+    ],
+    "signals": [
+      "apk_manifest"
+    ],
+    "requires": [
+      "documented_workflow"
+    ],
+    "procedure": "Review ContentProvider query/insert/update/delete/openFile and FileProvider file_paths.xml. Confirm parameterized SQL (no string concatenation) and that openFile canonicalizes paths within the sandbox; reject ../ traversal and overly broad root-path/external-path declarations."
+  },
+  {
+    "id": "platform.tapjacking",
+    "section": "09 Native and platform boundaries",
+    "title": "Tapjacking and overlay protection",
+    "objective": "platform_runtime",
+    "layer": "native_platform",
+    "masvs": [
+      "MASVS-PLATFORM-3"
+    ],
+    "cwe": [
+      "CWE-1021"
+    ],
+    "signals": [
+      "runtime_screen"
+    ],
+    "requires": [
+      "documented_workflow"
+    ],
+    "procedure": "Confirm sensitive views set setFilterTouchesWhenObscured(true)/android:filterTouchesWhenObscured and that authentication/transaction screens resist overlay tapjacking; test with an approved overlay app."
+  },
+  {
+    "id": "static.native_mitigations",
+    "section": "03 Static analysis across build stacks",
+    "title": "Native binary memory mitigations",
+    "objective": "static_analysis",
+    "layer": "app",
+    "masvs": [
+      "MASVS-CODE-4"
+    ],
+    "cwe": [
+      "CWE-693"
+    ],
+    "signals": [
+      "apk_profile"
+    ],
+    "requires": [],
+    "procedure": "Inspect ELF headers of lib/<abi>/*.so for Position Independent Executable (PIE), full RELRO, non-executable stack (NX), stack canaries and stripped symbol tables (e.g. checksec/readelf)."
+  },
+  {
+    "id": "resilience.attestation",
+    "section": "10 Resilience and integrity",
+    "title": "App integrity and server-side attestation",
+    "objective": "resilience",
+    "layer": "app",
+    "masvs": [
+      "MASVS-RESILIENCE-2"
+    ],
+    "cwe": [
+      "CWE-353"
+    ],
+    "signals": [],
+    "requires": [
+      "documented_workflow"
+    ],
+    "procedure": "Check runtime signing-certificate self-verification and Google Play Integrity API (or hardware key attestation): confirm integrity tokens use a server-generated nonce and are verified on the backend, never solely on-device."
+  }
+]
