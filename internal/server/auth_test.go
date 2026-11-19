@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -80,5 +81,40 @@ func TestValidatePassword(t *testing.T) {
 				t.Fatalf("validatePassword(%q)=%q, wantErr=%v", tc.pw, got, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestExtractToken(t *testing.T) {
+	// Bearer header
+	r := httptest.NewRequest("GET", "/api/test", nil)
+	r.Header.Set("Authorization", "Bearer token-header")
+	if got := extractToken(r); got != "token-header" {
+		t.Fatalf("extractToken header got %q want %q", got, "token-header")
+	}
+
+	// ripple_token cookie
+	r = httptest.NewRequest("GET", "/api/test", nil)
+	r.AddCookie(&http.Cookie{Name: "ripple_token", Value: "token-ripple-cookie"})
+	if got := extractToken(r); got != "token-ripple-cookie" {
+		t.Fatalf("extractToken ripple_token cookie got %q want %q", got, "token-ripple-cookie")
+	}
+
+	// android_lab_token cookie
+	r = httptest.NewRequest("GET", "/api/test", nil)
+	r.AddCookie(&http.Cookie{Name: "android_lab_token", Value: "token-android-lab-cookie"})
+	if got := extractToken(r); got != "token-android-lab-cookie" {
+		t.Fatalf("extractToken android_lab_token cookie got %q want %q", got, "token-android-lab-cookie")
+	}
+
+	// Query parameter ?token=
+	r = httptest.NewRequest("GET", "/api/test?token=token-query", nil)
+	if got := extractToken(r); got != "token-query" {
+		t.Fatalf("extractToken query got %q want %q", got, "token-query")
+	}
+
+	// Empty request
+	r = httptest.NewRequest("GET", "/api/test", nil)
+	if got := extractToken(r); got != "" {
+		t.Fatalf("extractToken empty got %q want %q", got, "")
 	}
 }

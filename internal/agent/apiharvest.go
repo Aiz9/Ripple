@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	actool "github.com/Autumn-27/norma/tool"
 )
 

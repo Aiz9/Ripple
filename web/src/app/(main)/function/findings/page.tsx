@@ -263,7 +263,8 @@ export default function FindingsPage() {
   // Export dialog state: scope (current filters/all/selected) x format (md single file / md files zip / csv / json).
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exportScope, setExportScope] = React.useState<"filtered" | "all" | "selected">("filtered");
-  const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json">("md-single");
+  const [exportTitle, setExportTitle] = React.useState("");
+  const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json" | "pdf" | "docx">("md-single");
   const [exporting, setExporting] = React.useState(false);
 
   const toggleSelected = React.useCallback((id: string, checked: boolean) => {
@@ -300,6 +301,7 @@ export default function FindingsPage() {
         scope: exportScope,
         filters: { severity, status, vulnclass, task, query, sort },
         ids: [...selectedIds],
+        title: exportTitle,
       });
       setExportOpen(false);
       toast.success("Export download started");
@@ -1304,7 +1306,21 @@ export default function FindingsPage() {
                 <label htmlFor="export-format-json" className="flex items-center gap-2 text-sm">
                   <RadioGroupItem id="export-format-json" value="json" /> JSON(.json)
                 </label>
+                <label htmlFor="export-format-pdf" className="flex items-center gap-2 text-sm">
+                  <RadioGroupItem id="export-format-pdf" value="pdf" /> PDF report (.pdf)
+                </label>
+                <label htmlFor="export-format-docx" className="flex items-center gap-2 text-sm">
+                  <RadioGroupItem id="export-format-docx" value="docx" /> Word report (.docx)
+                </label>
               </RadioGroup>
+              {(exportFormat === "pdf" || exportFormat === "docx") && (
+                <input
+                  value={exportTitle}
+                  onChange={(e) => setExportTitle(e.target.value)}
+                  placeholder="Project name for report cover (below VAPT)"
+                  className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                />
+              )}
             </div>
           </div>
 

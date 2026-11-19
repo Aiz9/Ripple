@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/agent"
-	"github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/intercept"
+	"github.com/Aiz9/ripple/internal/agent"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/intercept"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -69,10 +69,27 @@ func preview(s string, n int) string {
 // so rerun with backoff to let providers recover; pause/stop/cancellation immediately yields
 // to the corresponding lifecycle branch instead of retrying.
 const (
-	modelErrorRetries      = 2               // Extra whole-intent retries after model_error.
-	modelErrorRetryBackoff = 3 * time.Second // Backoff before each retry.
-	workControlWaitTimeout = 30 * time.Second
+	modelErrorRetries         = 5                // Extra whole-intent retries after model_error.
+	modelErrorRetryBackoff    = 3 * time.Second  // Base backoff before the first retry.
+	modelErrorRetryBackoffMax = 60 * time.Second // Cap for the exponential backoff.
+	workControlWaitTimeout    = 30 * time.Second
 )
+
+// modelErrorBackoffFor returns the backoff before the attempt-th retry (1-based),
+// doubling the base each attempt and capping at modelErrorRetryBackoffMax. A flat
+// backoff drains the retry budget during a multi-minute provider outage (task 774
+// lost 14 intents to stream errors / API timeouts); growth tolerates longer
+// disruptions without hammering a recovering endpoint.
+func modelErrorBackoffFor(base time.Duration, attempt int) time.Duration {
+	d := base
+	for i := 1; i < attempt && d < modelErrorRetryBackoffMax; i++ {
+		d *= 2
+	}
+	if d > modelErrorRetryBackoffMax {
+		return modelErrorRetryBackoffMax
+	}
+	return d
+}
 
 var errWorkControlConflict = errors.New("work control conflict")
 
@@ -498,7 +515,7 @@ func (e *Engine) SteerWork(intentID int64, msg string) error {
 	running := e.work[intentID] != nil
 	e.workMu.Unlock()
 	if !running {
-		return fmt.Errorf("Intent %d has no running worker (it may have finished or not been claimed)", intentID)
+		return fmt.Errorf("Intent %d already ended — no running worker to steer. Do not retry steer_work/kill_work on it; pick a new action (add_intent or inspect its result)", intentID)
 	}
 	e.steerMu.Lock()
 	e.steerBox[intentID] = append(e.steerBox[intentID], msg)
@@ -626,7 +643,11 @@ func (e *Engine) KillWork(intentID int64) error {
 	run := e.work[intentID]
 	e.workMu.Unlock()
 	if run == nil {
-		return fmt.Errorf("Intent %d has no running worker (it may have finished or not been claimed)", intentID)
+		// Idempotent: the goal of kill_work is "this intent is not running". If no
+		// worker holds it, that end-state already holds — report success so the
+		// planner stops re-issuing kill_work (task 774 looped this 14× on intent 4659).
+		log.Printf("[engine] kill_work intent %d: already not running (no-op)", intentID)
+		return nil
 	}
 	run.cancel(agent.AbortKilledByPlanner)
 	return nil
@@ -1036,9 +1057,10 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 	for attempt := 1; attempt <= maxRetries &&
 		retryableWorkerModelError(reason, err) &&
 		workCtx.Err() == nil && ectx.Err() == nil && !e.IsPaused(t.ID) && !e.isSettling(t.ID); attempt++ {
+		wait := modelErrorBackoffFor(retryBackoff, attempt)
 		log.Printf("[worker %s] task %s intent #%d ended with model_error; retry after %v (%d/%d)",
-			name, t.ID, intent.ID, retryBackoff, attempt, maxRetries)
-		if sleepCtx(workCtx, retryBackoff) {
+			name, t.ID, intent.ID, wait, attempt, maxRetries)
+		if sleepCtx(workCtx, wait) {
 			break // Cancellation during backoff goes to lifecycle branches below.
 		}
 		e.BeginLLMCall(t.ID)

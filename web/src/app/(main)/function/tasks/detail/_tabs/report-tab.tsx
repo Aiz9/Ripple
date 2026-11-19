@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { CheckIcon, CopyIcon, FileTextIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, DownloadIcon, FileTextIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Markdown } from "@/components/markdown";
@@ -15,6 +15,7 @@ export function ReportTab({ taskId }: { taskId: string }) {
   const [report, setReport] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
+  const [downloading, setDownloading] = React.useState<"pdf" | "docx" | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -44,6 +45,17 @@ export function ReportTab({ taskId }: { taskId: string }) {
       setTimeout(() => setCopied(false), 1500);
     } else {
       toast.error("Copy failed. Select the text and copy it manually.");
+    }
+  }
+
+  async function download(format: "pdf" | "docx") {
+    setDownloading(format);
+    try {
+      await api.exportReportDoc(taskId, format);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `Could not export ${format.toUpperCase()}`);
+    } finally {
+      setDownloading(null);
     }
   }
 
@@ -77,6 +89,12 @@ export function ReportTab({ taskId }: { taskId: string }) {
           <FileTextIcon className="size-4" /> Penetration test report (Markdown)
         </CardTitle>
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => download("pdf")} disabled={downloading !== null}>
+            <DownloadIcon /> {downloading === "pdf" ? "Preparing…" : "PDF"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => download("docx")} disabled={downloading !== null}>
+            <DownloadIcon /> {downloading === "docx" ? "Preparing…" : "DOCX"}
+          </Button>
           {report && (
             <Button size="sm" variant="outline" onClick={copy}>
               {copied ? <CheckIcon /> : <CopyIcon />} Copy

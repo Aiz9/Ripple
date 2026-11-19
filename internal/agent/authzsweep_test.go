@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 )
 
 func TestIdentityOwnsRequest(t *testing.T) {

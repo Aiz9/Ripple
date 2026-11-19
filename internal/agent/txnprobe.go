@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -74,17 +74,17 @@ func (t *ToolSet) mobileTxnProbe() actool.CoreTool {
 				return errf("no captured exchange at history_index %d", *a.HistoryIndex), nil
 			}
 			req := ex[0]
-			body := httpBody(req.Request)
-			if strings.TrimSpace(body) == "" || !strings.HasPrefix(strings.TrimSpace(body), "{") {
-				return actool.Errorf("captured request has no JSON object body to tamper"), nil
+			recordCoverage(t.taskID, coverageKey(req), "business-logic")
+			if !hasMutableBody(req.Request) {
+				return actool.Errorf("captured request has no JSON or form body to tamper"), nil
 			}
+			_, curFields := bodyFieldTypes(req.Request)
 			port := 443
 			if !req.TLS {
 				port = 80
 			}
-			replay := func(newBody string) (int, string, error) {
-				r := setRequestBody(req.Request, newBody)
-				resp, e := c.SendRequest(ctx, req.Host, port, req.TLS, r)
+			replay := func(reqStr string) (int, string, error) {
+				resp, e := c.SendRequest(ctx, req.Host, port, req.TLS, reqStr)
 				if e != nil {
 					return 0, "", e
 				}
@@ -93,8 +93,8 @@ func (t *ToolSet) mobileTxnProbe() actool.CoreTool {
 
 			var exps []txnExperiment
 			var violations []string
-			runTamper := func(name, tamper, newBody, violationIfAccepted string) {
-				st, rb, e := replay(newBody)
+			runTamper := func(name, tamper, reqStr, violationIfAccepted string) {
+				st, rb, e := replay(reqStr)
 				if e != nil {
 					exps = append(exps, txnExperiment{Name: name, Tamper: tamper, Violation: "replay error: " + e.Error()})
 					return
@@ -110,10 +110,10 @@ func (t *ToolSet) mobileTxnProbe() actool.CoreTool {
 
 			// Amount experiments.
 			if a.AmountField != "" {
-				if _, ok := jsonNumber(body, a.AmountField); ok {
+				if _, ok := curFields[a.AmountField]; ok {
 					for _, tv := range amountTestValues(inv) {
-						if nb, ok := setJSONField(body, a.AmountField, tv.raw); ok {
-							runTamper("amount_"+tv.label, a.AmountField+"="+tv.raw, nb, amountViolation(tv.val, inv))
+						if nr, ok := setBodyFieldRaw(req.Request, a.AmountField, tv.raw); ok {
+							runTamper("amount_"+tv.label, a.AmountField+"="+tv.raw, nr, amountViolation(tv.val, inv))
 						}
 					}
 				}
@@ -121,14 +121,14 @@ func (t *ToolSet) mobileTxnProbe() actool.CoreTool {
 			// Currency experiment: try a disallowed currency.
 			if a.CurrencyField != "" && len(a.AllowedCurrencies) > 0 {
 				bad := disallowedCurrency(inv)
-				if nb, ok := setJSONField(body, a.CurrencyField, strconv.Quote(bad)); ok {
-					runTamper("currency_swap", a.CurrencyField+"="+bad, nb, "disallowed currency "+bad+" accepted")
+				if nr, ok := setBodyFieldRaw(req.Request, a.CurrencyField, strconv.Quote(bad)); ok {
+					runTamper("currency_swap", a.CurrencyField+"="+bad, nr, "disallowed currency "+bad+" accepted")
 				}
 			}
 			// Replay / idempotency experiment: send the original request twice.
 			if a.IdempotencyField != "" {
-				st1, rb1, e1 := replay(body)
-				st2, rb2, e2 := replay(body)
+				st1, rb1, e1 := replay(req.Request)
+				st2, rb2, e2 := replay(req.Request)
 				if e1 == nil && e2 == nil {
 					o1, o2 := classifyTxn(st1, rb1), classifyTxn(st2, rb2)
 					ex := txnExperiment{Name: "replay_idempotency", Tamper: "send identical request twice", Status: st2, Outcome: o2}

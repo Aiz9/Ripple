@@ -2,11 +2,11 @@ package server
 
 import (
 	"database/sql"
-	"github.com/Autumn-27/artex/internal/androidapk"
+	"github.com/Aiz9/ripple/internal/androidapk"
 	"os"
 	"testing"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 

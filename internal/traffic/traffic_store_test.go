@@ -2,49 +2,39 @@ package traffic
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
-
-	mproxy "github.com/lqqyt2423/go-mitmproxy/proxy"
 )
 
-// flowOpt tweaks the synthetic flow built by newFlow.
-type flowOpt func(*mproxy.Flow)
+// flowOpt tweaks the synthetic exchange built by newFlow.
+type flowOpt func(*exchange)
 
 func withRespType(ct string) flowOpt {
-	return func(f *mproxy.Flow) { f.Response.Header.Set("Content-Type", ct) }
+	return func(e *exchange) { e.contentType = ct }
 }
 
-// newFlow builds the minimal flow record() needs: a request with a URL, method
+// newFlow builds the minimal exchange record() needs: a request with a URL, method
 // and body, plus a response with a status and body.
-func newFlow(host, method, path string, reqBody, respBody []byte, opts ...flowOpt) *mproxy.Flow {
+func newFlow(host, method, path string, reqBody, respBody []byte, opts ...flowOpt) exchange {
 	u, err := url.Parse("http://" + host + path)
 	if err != nil {
 		panic(err)
 	}
-	f := &mproxy.Flow{
-		Request: &mproxy.Request{
-			Method: method,
-			URL:    u,
-			Proto:  "HTTP/1.1",
-			Header: http.Header{"Content-Type": []string{"application/json"}},
-			Body:   reqBody,
-		},
-		Response: &mproxy.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       respBody,
-		},
+	e := exchange{
+		host: u.Hostname(), method: method, url: u.String(),
+		reqURI: u.RequestURI(), proto: "HTTP/1.1", escapedPath: u.EscapedPath(),
+		status: 200, contentType: "application/json", reqContentType: "application/json",
+		reqHeaderLines: "Host: " + host, respHeaderLines: "Content-Type: application/json",
+		reqBody: reqBody, respBody: respBody,
 	}
 	for _, o := range opts {
-		o(f)
+		o(&e)
 	}
-	return f
+	return e
 }
 
 func openTraffic(t *testing.T) (*Traffic, string) {
@@ -73,7 +63,7 @@ func onlyExchangeID(t *testing.T, tr *Traffic) string {
 func TestRecordKeepsBodiesInIndex(t *testing.T) {
 	tr, dir := openTraffic(t)
 
-	tr.record(newFlow("api.example.com", "POST", "/v1/login",
+	tr.recordFlow(newFlow("api.example.com", "POST", "/v1/login",
 		[]byte(`{"user":"admin","password":"P@ssw0rd"}`),
 		[]byte("{\"token\":\"abc123\",\"note\":\"\u5185\u7f51\u6d4b\u8bd5\u8d26\u53f7\"}")))
 
@@ -117,10 +107,10 @@ func TestFullTextSearchMatchesBodies(t *testing.T) {
 		t.Skip("driver does not enable FTS5")
 	}
 	const host = "api.example.com"
-	tr.record(newFlow(host, "POST", "/v1/login",
+	tr.recordFlow(newFlow(host, "POST", "/v1/login",
 		[]byte(`{"user":"admin","password":"P@ssw0rd"}`),
 		[]byte("{\"token\":\"abc123\",\"note\":\"\u5185\u7f51\u6d4b\u8bd5\u8d26\u53f7\"}")))
-	tr.record(newFlow(host, "GET", "/v1/health", nil, []byte(`{"status":"ok"}`)))
+	tr.recordFlow(newFlow(host, "GET", "/v1/health", nil, []byte(`{"status":"ok"}`)))
 
 	hits := func(term string) int {
 		t.Helper()
@@ -165,7 +155,7 @@ func TestLargeBodySpillsButStaysSearchable(t *testing.T) {
 	if len(big) <= maxInlineBody+blobPreview {
 		t.Fatalf("test data not large enough: %d bytes", len(big))
 	}
-	tr.record(newFlow(host, "GET", "/backup.sql", nil, big, withRespType("application/sql")))
+	tr.recordFlow(newFlow(host, "GET", "/backup.sql", nil, big, withRespType("application/sql")))
 
 	// Stored under a single bucket level, named by hash.
 	var hash string
@@ -247,7 +237,7 @@ func TestBinaryBodyStaysOutOfIndex(t *testing.T) {
 	const marker = "SECRETINIMAGE"
 	png := append([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00},
 		[]byte(strings.Repeat("x", maxInlineBody)+marker)...)
-	tr.record(newFlow(host, "GET", "/logo.png", nil, png, withRespType("image/png")))
+	tr.recordFlow(newFlow(host, "GET", "/logo.png", nil, png, withRespType("image/png")))
 
 	rows, err := tr.query(host, "", marker, 0, 10)
 	if err != nil {
@@ -306,7 +296,7 @@ func TestGCCollectsBlobsAndEmptyBuckets(t *testing.T) {
 	tr, dir := openTraffic(t)
 	const host = "dump.example.com"
 	big := []byte(strings.Repeat("A", maxInlineBody+1024))
-	tr.record(newFlow(host, "GET", "/big.bin", nil, big, withRespType("application/sql")))
+	tr.recordFlow(newFlow(host, "GET", "/big.bin", nil, big, withRespType("application/sql")))
 
 	var hash string
 	if err := tr.DB().QueryRow(`SELECT resp_blob FROM exchange_bodies`).Scan(&hash); err != nil {
@@ -357,8 +347,8 @@ func TestPageSearchesBodies(t *testing.T) {
 	if !tr.fts {
 		t.Skip("driver does not enable FTS5")
 	}
-	tr.record(newFlow("api.example.com", "POST", "/v1/login", nil, []byte(`{"error":"invalid credentials"}`)))
-	tr.record(newFlow("api.example.com", "GET", "/v1/health", nil, []byte(`{"status":"ok"}`)))
+	tr.recordFlow(newFlow("api.example.com", "POST", "/v1/login", nil, []byte(`{"error":"invalid credentials"}`)))
+	tr.recordFlow(newFlow("api.example.com", "GET", "/v1/health", nil, []byte(`{"status":"ok"}`)))
 
 	rows, total, err := tr.Page(PageQuery{Query: "invalid credentials", RespMin: -1, RespMax: -1}, 0, 100)
 	if err != nil {
@@ -378,11 +368,11 @@ func TestPageSearchesBodies(t *testing.T) {
 // server-side sorting by resp_len.
 func TestPageFiltersAndSort(t *testing.T) {
 	tr, _ := openTraffic(t)
-	status := func(code int) flowOpt { return func(f *mproxy.Flow) { f.Response.StatusCode = code } }
+	status := func(code int) flowOpt { return func(e *exchange) { e.status = code } }
 	// Three exchanges with distinct status codes and response sizes.
-	tr.record(newFlow("api.example.com", "GET", "/api/users", nil, make([]byte, 10), status(200)))
-	tr.record(newFlow("api.example.com", "GET", "/api/admin", nil, make([]byte, 100), status(404)))
-	tr.record(newFlow("api.example.com", "GET", "/api/users/1", nil, make([]byte, 50), status(500)))
+	tr.recordFlow(newFlow("api.example.com", "GET", "/api/users", nil, make([]byte, 10), status(200)))
+	tr.recordFlow(newFlow("api.example.com", "GET", "/api/admin", nil, make([]byte, 100), status(404)))
+	tr.recordFlow(newFlow("api.example.com", "GET", "/api/users/1", nil, make([]byte, 50), status(500)))
 
 	// Status class band.
 	if rows, _, err := tr.Page(PageQuery{Status: "4xx", RespMin: -1, RespMax: -1}, 0, 100); err != nil || len(rows) != 1 || rows[0].Status != 404 {
@@ -416,9 +406,9 @@ func TestPageFiltersAndSort(t *testing.T) {
 
 func TestQueryHostPortAndURLForms(t *testing.T) {
 	tr, _ := openTraffic(t)
-	tr.record(newFlow("api.example.com:8082", "GET", "/admin", nil, []byte("8082")))
-	tr.record(newFlow("api.example.com:8088", "GET", "/admin", nil, []byte("8088")))
-	tr.record(newFlow("[2001:db8::1]:8443", "GET", "/admin", nil, []byte("8443")))
+	tr.recordFlow(newFlow("api.example.com:8082", "GET", "/admin", nil, []byte("8082")))
+	tr.recordFlow(newFlow("api.example.com:8088", "GET", "/admin", nil, []byte("8088")))
+	tr.recordFlow(newFlow("[2001:db8::1]:8443", "GET", "/admin", nil, []byte("8443")))
 
 	for _, tc := range []struct {
 		name string
@@ -510,7 +500,7 @@ func TestRecordConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range n {
 		wg.Go(func() {
-			tr.record(newFlow("api.example.com", "GET", fmt.Sprintf("/item/%d", i),
+			tr.recordFlow(newFlow("api.example.com", "GET", fmt.Sprintf("/item/%d", i),
 				nil, fmt.Appendf(nil, `{"id":%d}`, i)))
 		})
 	}

@@ -15,7 +15,7 @@ const MOCK_LOGS: LogLine[] = [
     ts: "2026-07-26T03:55:00Z",
     level: "info",
     tag: "engine",
-    text: "ARTEX v0.1.0 backend listening on :8787 (workers=3)",
+    text: "Ripple v0.1.0 backend listening on :8787 (workers=3)",
   },
   {
     seq: 2,
@@ -103,9 +103,30 @@ export default function LogsPage() {
       setLines(MOCK_LOGS);
       return;
     }
+
+    // Validate authentication and load initial logs via HTTP. If token is invalid or expired,
+    // http() intercepts the 401, clears invalid credentials, and redirects to /login.
+    http<{ items: LogLine[]; has_more: boolean; source?: string }>("/logs/history?limit=200")
+      .then((data) => {
+        if (data.items?.length) {
+          setLines((prev) => {
+            const seen = new Set(prev.map((x) => x.seq));
+            const fresh = data.items.filter((x) => !seen.has(x.seq));
+            return fresh.length ? [...fresh, ...prev] : prev;
+          });
+        }
+      })
+      .catch(() => {
+        /* handled by http() or displayed */
+      });
+
     const es = new EventSource(sseUrl("/api/logs/stream?since=0"));
     es.onopen = () => setStreamState("Connected");
-    es.onerror = () => setStreamState("Disconnected — reconnecting; history is retained");
+    es.onerror = () => {
+      setStreamState("Disconnected — reconnecting; history is retained");
+      // Check if disconnection was caused by an expired or invalid auth token
+      void http("/logs/history?limit=1").catch(() => {});
+    };
     es.onmessage = (e) => {
       try {
         const l = JSON.parse(e.data) as LogLine;

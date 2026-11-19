@@ -70,10 +70,26 @@ func (r *Registry) Add(s Skill) {
 	r.byName[s.Name] = s
 }
 
-// Get returns a skill by name.
+// Get returns a skill by name. On an exact miss it falls back to a
+// case-insensitive match that treats '_' and '-' as equivalent, since models
+// routinely invoke "broken_function_level_authorization" for a skill registered
+// as "broken-function-level-authorization".
 func (r *Registry) Get(name string) (Skill, bool) {
-	s, ok := r.byName[name]
-	return s, ok
+	if s, ok := r.byName[name]; ok {
+		return s, true
+	}
+	want := normalizeSkillName(name)
+	for _, n := range r.order {
+		if normalizeSkillName(n) == want {
+			return r.byName[n], true
+		}
+	}
+	return Skill{}, false
+}
+
+// normalizeSkillName lowercases and unifies '_'/'-' so separator/case slips match.
+func normalizeSkillName(name string) string {
+	return strings.ReplaceAll(strings.ToLower(name), "_", "-")
 }
 
 // List returns skills in registration order.

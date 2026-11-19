@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/notify"
+	"github.com/Aiz9/ripple/internal/notify"
 )
 
 // Notification channel configuration/events; delivery claiming and transitions live in

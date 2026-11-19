@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 )
 
 // Controlled evaluation against ground truth.
@@ -129,6 +129,27 @@ func seededBank() *httptest.Server {
 	})
 	mux.HandleFunc("/search/secure", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"results": []string{}})
+	})
+	// VULN (CORS): reflects the request Origin and allows credentials. SECURE: fixed origin.
+	mux.HandleFunc("/cors/vuln", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/cors/safe", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "https://trusted.app")
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	// VULN (GraphQL): introspection enabled.
+	mux.HandleFunc("/graphql", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"data": map[string]any{"__schema": map[string]any{"types": []map[string]string{{"name": "Query"}}}}})
+	})
+	// VULN (data exposure): returns secrets/PII. SECURE: minimal.
+	mux.HandleFunc("/expose/vuln", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"name": "alice", "password": "hunter2", "ssn": "123-45-6789", "card": "4242424242424242"})
+	})
+	mux.HandleFunc("/expose/safe", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"name": "alice", "id": 1})
 	})
 	// VULN (mass assignment): echoes back whatever fields the client sends, so an
 	// injected "role":"admin" is applied. SECURE variant binds an allow-list only.
@@ -428,6 +449,74 @@ func TestEvalInjectionGroundTruth(t *testing.T) {
 	reportMetrics(t, "injection", tp, fp, tn, fn)
 }
 
+func TestEvalMisconfigGraphQLExposure(t *testing.T) {
+	srv := seededBank()
+	defer srv.Close()
+	tp, fp, tn, fn := 0, 0, 0, 0
+	rec := func(detected, want bool, name string) {
+		switch {
+		case detected && want:
+			tp++
+		case detected && !want:
+			fp++
+			t.Errorf("FALSE POSITIVE: %s", name)
+		case !detected && want:
+			fn++
+			t.Errorf("FALSE NEGATIVE: %s", name)
+		default:
+			tn++
+		}
+	}
+	// CORS: replay with attacker Origin, read ACAO/ACAC via the real decider.
+	cors := func(path string) bool {
+		req, _ := http.NewRequest("GET", srv.URL+path, nil)
+		req.Header.Set("Origin", "https://evil.attacker.example")
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		v, _, _ := corsVerdict(resp.Header.Get("Access-Control-Allow-Origin"), resp.Header.Get("Access-Control-Allow-Credentials"), "https://evil.attacker.example")
+		return v
+	}
+	rec(cors("/cors/vuln"), true, "CORS reflected+creds")
+	rec(cors("/cors/safe"), false, "CORS fixed origin")
+	// GraphQL introspection.
+	gs, gb := postReq(srv, "/graphql", `{"query":"{__schema{types{name}}}"}`)
+	rec(introspectionEnabled(gs, gb), true, "GraphQL introspection enabled")
+	// Data exposure.
+	_, eb := getReq(srv, "/expose/vuln", tokA)
+	ec, eu := sensitiveFieldsInJSON(eb)
+	rec(len(ec)+len(eu) > 0, true, "data exposure present")
+	_, sb := getReq(srv, "/expose/safe", tokA)
+	sc, su := sensitiveFieldsInJSON(sb)
+	rec(len(sc)+len(su) > 0, false, "data exposure clean")
+	reportMetrics(t, "misconfig+graphql+exposure", tp, fp, tn, fn)
+}
+
+func TestEvalFormBodyInjection(t *testing.T) {
+	// Prove the codec: SSTI payload injected into a FORM body field is detected.
+	raw := "POST /render/insecure HTTP/1.1\r\nHost: h\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\nq=hi&other=1"
+	tgts := injectableTargets(raw)
+	hasQ := false
+	for _, tg := range tgts {
+		if tg.Location == "body" && tg.Name == "q" {
+			hasQ = true
+		}
+	}
+	if !hasQ {
+		t.Fatalf("form body field q not an injection target: %v", tgts)
+	}
+	out, ok := injectInto(raw, injectTarget{"body", "q"}, "{{1009*1013}}")
+	if !ok || !contains(httpBody(out), "q=") {
+		t.Fatalf("form injection failed: %q", httpBody(out))
+	}
+	// the injected payload round-trips (url-encoded) and decodes back
+	if !contains(httpBody(out), "1009") {
+		t.Errorf("payload not in form body: %q", httpBody(out))
+	}
+}
+
 func TestEvalMassAssignmentGroundTruth(t *testing.T) {
 	srv := seededBank()
 	defer srv.Close()
@@ -457,15 +546,15 @@ func TestEvalMassAssignmentGroundTruth(t *testing.T) {
 func TestEvalSchemaFuzzGroundTruth(t *testing.T) {
 	srv := seededBank()
 	defer srv.Close()
-	base := `{"amount":100,"note":"hi"}`
-	muts := bodyMutations(base)
+	baseReq := "POST /x HTTP/1.1\r\nHost: h\r\nContent-Type: application/json\r\n\r\n" + `{"amount":100,"note":"hi"}`
+	muts := requestMutations(baseReq)
 	if len(muts) == 0 {
 		t.Fatal("no mutations generated")
 	}
 	// Any mutation that produces a 5xx is a robustness violation.
 	anyServerError := func(path string) bool {
 		for _, m := range muts {
-			s, _ := postReq(srv, path, m.body)
+			s, _ := postReq(srv, path, httpBody(m.req))
 			if isServerError(s) {
 				return true
 			}

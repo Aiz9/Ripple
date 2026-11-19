@@ -44,6 +44,8 @@ const THINKING_TYPES: { value: string; label: string }[] = [
   { value: "disabled", label: "Disabled" },
   { value: "enabled", label: "Enabled" },
 ];
+const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+
 // Which request field name carries the output limit (meaningful only for the openai format). NONE <-> "" uses the same sentinel conversion.
 const MAX_TOKENS_FIELDS: { value: string; label: string }[] = [
   { value: NONE, label: "max_tokens (default)" },
@@ -489,7 +491,20 @@ function ProfileSheet({
             </div>
             <div className="grid gap-2">
               <Label>Format</Label>
-              <Select value={format} onValueChange={(v) => setFormat(v as "anthropic" | "openai" | "openai-responses" | "gemini")}>
+              {/* DeepSeek is OpenAI Chat Completions at its own base URL, so it is stored as format "openai". */}
+              <Select
+                value={format === "openai" && baseUrl.includes("api.deepseek.com") ? "deepseek" : format}
+                onValueChange={(v) => {
+                  if (v === "deepseek") {
+                    setFormat("openai");
+                    setBaseUrl(DEEPSEEK_BASE_URL);
+                    if (!model) setModel("deepseek-chat");
+                    return;
+                  }
+                  if (baseUrl === DEEPSEEK_BASE_URL) setBaseUrl("");
+                  setFormat(v as "anthropic" | "openai" | "openai-responses" | "gemini");
+                }}
+              >
                 <SelectTrigger aria-label="Provider format">
                   <SelectValue placeholder="Select format" />
                 </SelectTrigger>
@@ -498,6 +513,7 @@ function ProfileSheet({
                   <SelectItem value="anthropic">Anthropic</SelectItem>
                   <SelectItem value="openai">OpenAI (Chat Completions)</SelectItem>
                   <SelectItem value="openai-responses">OpenAI (Responses API)</SelectItem>
+                  <SelectItem value="deepseek">DeepSeek</SelectItem>
                 </SelectContent>
               </Select>
             </div>

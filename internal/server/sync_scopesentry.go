@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/mcphttp"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/mcphttp"
 )
 
 // ScopeSentry asset synchronization.

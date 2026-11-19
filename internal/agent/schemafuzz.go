@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -19,7 +19,7 @@ import (
 type mutation struct {
 	Field string `json:"field"`
 	Kind  string `json:"kind"`
-	body  string
+	req   string // full tampered request, ready to send
 }
 
 // rawKind classifies a JSON raw value.
@@ -62,38 +62,44 @@ func typeFlip(kind string) (string, string) {
 	}
 }
 
-// bodyMutations generates per-field robustness mutations of a JSON object body:
-// a wrong-type value, null, removal, and (for strings) an oversized value.
-func bodyMutations(body string) []mutation {
-	var m map[string]json.RawMessage
-	if json.Unmarshal([]byte(strings.TrimSpace(body)), &m) != nil {
+// typeKind maps an inferred field type to typeFlip's kind vocabulary.
+func typeKind(t string) string {
+	switch t {
+	case "integer", "number":
+		return "number"
+	case "boolean":
+		return "bool"
+	default:
+		return t
+	}
+}
+
+// requestMutations generates per-field robustness mutations of a request's body
+// (JSON or form): a wrong-type value, null, removal, and an oversized value. Each
+// mutation is a full tampered request, ready to send.
+func requestMutations(rawRequest string) []mutation {
+	format, fields := bodyFieldTypes(rawRequest)
+	if len(fields) == 0 {
 		return nil
 	}
 	var out []mutation
-	for field, raw := range m {
-		kind := rawKind(string(raw))
-		if flip, desc := typeFlip(kind); kind != "null" {
-			if nb, ok := setJSONField(body, field, flip); ok {
-				out = append(out, mutation{Field: field, Kind: desc, body: nb})
+	for field, typ := range fields {
+		if typ != "null" {
+			flip, desc := typeFlip(typeKind(typ))
+			if nr, ok := setBodyFieldRaw(rawRequest, field, flip); ok {
+				out = append(out, mutation{Field: field, Kind: desc, req: nr})
 			}
 		}
-		if nb, ok := setJSONField(body, field, "null"); ok {
-			out = append(out, mutation{Field: field, Kind: "null", body: nb})
+		if nr, ok := setBodyFieldRaw(rawRequest, field, "null"); ok {
+			out = append(out, mutation{Field: field, Kind: "null", req: nr})
 		}
-		if kind == "string" {
-			if nb, ok := setJSONField(body, field, `"`+strings.Repeat("A", 5000)+`"`); ok {
-				out = append(out, mutation{Field: field, Kind: "oversized", body: nb})
+		if typ == "string" || format == "form" {
+			if nr, ok := setBodyFieldString(rawRequest, field, strings.Repeat("A", 5000)); ok {
+				out = append(out, mutation{Field: field, Kind: "oversized", req: nr})
 			}
 		}
-		// removal
-		clone := make(map[string]json.RawMessage, len(m))
-		for k, v := range m {
-			if k != field {
-				clone[k] = v
-			}
-		}
-		if rb, err := json.Marshal(clone); err == nil {
-			out = append(out, mutation{Field: field, Kind: "removed", body: string(rb)})
+		if nr, ok := removeBodyField(rawRequest, field); ok {
+			out = append(out, mutation{Field: field, Kind: "removed", req: nr})
 		}
 	}
 	return out
@@ -147,11 +153,11 @@ func (t *ToolSet) mobileSchemaFuzz() actool.CoreTool {
 				return errf("no captured exchange at history_index %d", *a.HistoryIndex), nil
 			}
 			req := ex[0]
-			body := httpBody(req.Request)
-			if strings.TrimSpace(body) == "" || !strings.HasPrefix(strings.TrimSpace(body), "{") {
-				return actool.Errorf("captured request has no JSON object body to mutate"), nil
+			recordCoverage(t.taskID, coverageKey(req), "schema-fuzz")
+			if !hasMutableBody(req.Request) {
+				return actool.Errorf("captured request has no JSON or form body to mutate"), nil
 			}
-			muts := bodyMutations(body)
+			muts := requestMutations(req.Request)
 			if len(muts) > a.MaxMutations {
 				muts = muts[:a.MaxMutations]
 			}
@@ -168,7 +174,7 @@ func (t *ToolSet) mobileSchemaFuzz() actool.CoreTool {
 			var results []res
 			var errorsHit []string
 			for _, mu := range muts {
-				resp, e := c.SendRequest(ctx, req.Host, port, req.TLS, setRequestBody(req.Request, mu.body))
+				resp, e := c.SendRequest(ctx, req.Host, port, req.TLS, mu.req)
 				if e != nil {
 					continue
 				}

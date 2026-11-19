@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 )
 
 // spawnValidationFor returns the worker callback that, when a worker reports a

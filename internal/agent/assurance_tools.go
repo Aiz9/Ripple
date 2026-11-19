@@ -4,11 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
+
+// highRiskEndpointPattern flags money-movement / auth / cross-channel endpoints
+// whose authorization must be exercised before a task may be declared done. A
+// token-audience-confusion bug (task 774: a CONVERGENT/BPS token accepted on a
+// legacy fund-transfer / QR-payment route) hides exactly on these, so leaving one
+// unanchored to any fact must block finish rather than silently pass.
+var highRiskEndpointPattern = regexp.MustCompile(`(?i)(payment|transfer|/pay\b|/qr|convergent|nqr|fund|/login|/token|thirdparty|third-party|account/link|/sso)`)
 
 // Test-assurance tools: coverage ledger with closure states, shared threat model,
 // and finding withdrawal. Bound to planner + worker.
@@ -40,6 +48,15 @@ func (t *ToolSet) recordTestCoverage() actool.CoreTool {
 			}
 			if err := json.Unmarshal(in, &a); err != nil {
 				return actool.Errorf(err.Error()), nil
+			}
+			// Impact-probe discipline (task 774): a money-movement surface must not be
+			// closed as safe on an invalid measurement — a broken probe (post_balance=None),
+			// a settlement-rail outage, or a transport error means "no effect observed"
+			// proves nothing. Force needs_follow_up/blocked instead of a false all-clear.
+			if (a.Outcome == "no_issue_found" || a.Outcome == "ruled_out") &&
+				highRiskEndpointPattern.MatchString(a.Surface+" "+a.Risk) &&
+				invalidMeasurement(a.Evidence) {
+				return actool.Errorf("this evidence shows the measurement was invalid or blocked (outage / transport error / null balance read), so it cannot support a safety outcome on a money-movement surface. Re-measure with the side-effect channel confirmed live, or record needs_follow_up (what is missing) / blocked (the concrete blocker)."), nil
 			}
 			iid := pid(a.IntentID)
 			if iid <= 0 && t.ownerNode > 0 {
@@ -238,10 +255,58 @@ func (t *ToolSet) finishGate(chainAnalysis string) string {
 			problems = append(problems, fmt.Sprintf("chain_analysis is required with %d confirmed findings: state which combinations could chain into a higher-impact path, which were tested (filed as their own finding if they worked) and why the rest are unrelated", n))
 		}
 	}
+	if untested := t.untestedHighRiskEndpoints(); len(untested) > 0 {
+		problems = append(problems, fmt.Sprintf("%d high-risk endpoints are in scope with no fact/coverage anchoring them (%s): test each — mint a token from every login path (app, convergent/third-party, SSO, account-link) and replay across v1 and v2 — or record a coverage row with the reason it is not applicable. Enumeration is not coverage", len(untested), strings.Join(untested, "; ")))
+	}
 	if len(problems) == 0 {
 		return ""
 	}
 	return "Cannot mark the last goal met yet — the task would finish with work outstanding:\n- " + strings.Join(problems, "\n- ")
+}
+
+// invalidMeasurementMarkers are phrases in coverage evidence that mean the test's
+// observation channel failed, so a "no effect" reading is not evidence of safety.
+var invalidMeasurementMarkers = []string{
+	"outage", "connection reset", "connection timed out", "timed out", "timeout",
+	"=none", "= none", "post_balance=none", "balance=none", "null balance",
+	"500 ", "502", "503", "504", "service unavailable", "unavailable",
+	"could not", "no response", "unreachable", "rail down", "settlement down",
+	"probe bug", "script bug", "persistence bug", "read local out",
+}
+
+// invalidMeasurement reports whether evidence indicates a failed/blocked measurement.
+func invalidMeasurement(evidence string) bool {
+	e := strings.ToLower(evidence)
+	for _, m := range invalidMeasurementMarkers {
+		if strings.Contains(e, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// untestedHighRiskEndpoints returns labels of in-scope endpoint assets that match
+// highRiskEndpointPattern and are anchored to no fact (untested). Capped at 10.
+// Returns nil when the asset store / task context is absent (tests, cross-task
+// reads) so the gate never blocks spuriously.
+func (t *ToolSet) untestedHighRiskEndpoints() []string {
+	if t.as == nil || t.taskID <= 0 {
+		return nil
+	}
+	assets, _, err := t.as.ListUntestedAssetsWithSources(t.taskID, "endpoint", 500, 0)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, a := range assets {
+		if highRiskEndpointPattern.MatchString(a.Label) {
+			out = append(out, a.Label)
+			if len(out) == 10 {
+				break
+			}
+		}
+	}
+	return out
 }
 
 func (t *ToolSet) confirmedFindingCount() int {

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -655,8 +655,10 @@ func (t *ToolSet) WorkerTools() []actool.CoreTool {
 		t.searchAllWorkerTraces(), t.getWorkerTrace(),
 		// node_detail reads full details after a Worker obtains an intent/node ID through trace review.
 		t.nodeDetail(),
-		// list_facts/list_companies/list_worker_traces remain planner/main-only; contextual review
-		// is a planning responsibility, while Workers execute and persist one intent.
+		// list_facts (read-only) lets a Worker page prior facts to avoid re-discovering what a
+		// peer already persisted — and matches what list_findings/node_detail descriptions tell
+		// the Worker to use. list_companies/list_worker_traces remain planner/main-only.
+		t.listFacts(),
 	}
 	ws = append(ws, t.assuranceTools()...)
 	// Mobile-assessment capability tools (bypass library + Burp-MCP traffic surface)

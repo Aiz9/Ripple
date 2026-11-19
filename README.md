@@ -36,7 +36,7 @@ cp config.example.json config.json   # set your database credentials
 ./start.sh                             # starts PostgreSQL, adb and the server
 ```
 
-Open http://localhost:8797. On first start, create the administrator password; the username is `ARTEX`. Then:
+Open http://localhost:8797. On first start, create the administrator password; the username is `Ripple`. Then:
 
 1. **System → LLM** — add and activate a model profile.
 2. **System settings → Burp Suite MCP** — confirm the MCP endpoint (default `http://127.0.0.1:9876`) and test the connection.
@@ -74,11 +74,13 @@ These are the `mobile_*` worker tools (see [APK penetration testing](docs/APK_PE
 
 | Area | Tools (`mobile_…`) | What they confirm |
 | --- | --- | --- |
-| Discovery & modeling | `api_harvest`, `api_graph`, `openapi_ingest` | normalized endpoint inventory; object + producer→consumer dependency graph; documented (inferred) endpoints from an OpenAPI/Swagger spec |
-| Authorization | `identity_set`, `authz_diff`, `authz_sweep`, `authz_expect` | IDOR/BOLA by differential (owner vs. another identity vs. unauthenticated), confirmed by data disclosure, not status; configurable shared-resource/role exceptions |
-| Authentication | `jwt_probe` | JWT `alg:none` / tampered-signature acceptance and `exp` weaknesses |
-| Financial logic | `txn_probe`, `race_probe`, `workflow_set` / `workflow_check` | amount sign/limit, currency and idempotency invariants; race/TOCTOU (double-spend); out-of-order/skipped workflow steps |
-| Input & injection | `schema_fuzz`, `mass_assignment`, `inject_probe` | 5xx on malformed input; privilege-field mass assignment (applied in the response); SSTI (evaluated expression) and error-based SQLi |
+| Discovery & modeling | `api_harvest`, `api_graph`, `api_model`, `openapi_ingest` | normalized endpoint inventory; object + producer→consumer dependency graph; inferred parameter/response **types**, API **version** and discovery **confidence**; documented (inferred) endpoints from an OpenAPI/Swagger spec |
+| Authorization | `identity_set` (with ownership map), `authz_diff`, `authz_sweep` (role×function matrix), `authz_expect` | IDOR/BOLA by differential (owner vs. another identity vs. unauthenticated), confirmed by data disclosure, not status; configurable shared-resource/role exceptions |
+| Authentication | `jwt_probe`, `ratelimit_probe`, `session_probe` | JWT `alg:none` / tampered-signature / `exp` weaknesses; missing brute-force/rate-limit throttling; sessions not invalidated after logout |
+| Financial logic | `txn_probe`, `race_probe`, `workflow_set` / `workflow_check`, `balance_check` | amount sign/limit, currency and idempotency invariants; race/TOCTOU (double-spend); out-of-order/skipped workflow steps; out-of-band ledger consistency (debit-matches, failed-txn-no-effect) |
+| Input & injection | `schema_fuzz`, `mass_assignment`, `inject_probe` | 5xx on malformed input; privilege-field mass assignment (applied in the response); SSTI (evaluated expression) and error-based SQLi — on **JSON and form-urlencoded** bodies |
+| Misconfig & exposure | `misconfig_probe`, `graphql_probe`, `data_exposure` | permissive CORS (reflected/credentialed Origin) + missing security headers; GraphQL introspection enabled; sensitive data (secrets, Luhn-valid PANs, SSNs, JWTs, keys) in responses |
+| Coverage | `coverage` | which checks have run on each endpoint, and which endpoints remain untested |
 
 Detection quality is measured against seeded ground-truth targets and an OWASP crAPI-modelled suite — precision, recall and false-positive rate per category — and a live crAPI integration harness runs the same deciders against a running instance (`go test ./internal/agent/ -run Eval -v`). The engine reuses the existing identity store, Burp replay and findings pipeline; it adds no new runtime dependencies.
 
@@ -93,7 +95,7 @@ Detection quality is measured against seeded ground-truth targets and an OWASP c
 | `ANDROIDLAB_LLM_*` | Default LLM provider, model, base URL and proxy |
 | `ANDROIDLAB_ADB_DEVICES` | Comma-separated TCP device addresses to connect, e.g. `127.0.0.1:6555` |
 | `ANDROIDLAB_SESSION_CONTAINERS` | Docker containers whose lifecycle the launcher owns (replaces automatic database selection) |
-| `ANDROIDLAB_ENABLE_LEGACY_AGENTS` | Shell-capable ARTEX agents; `start.sh` sets `1`, use `ANDROIDLAB_ENABLE_LEGACY_AGENTS=0 ./start.sh` to disable |
+| `ANDROIDLAB_ENABLE_LEGACY_AGENTS` | Shell-capable legacy agents; `start.sh` sets `1`, use `ANDROIDLAB_ENABLE_LEGACY_AGENTS=0 ./start.sh` to disable |
 
 Provider keys use their usual names (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`). Host scripts do not source `.env`; Compose does. JWT signing keys live in `identity/`, outside the browsable workspace.
 
@@ -156,6 +158,6 @@ Database tests connect through the normal configuration, so run them against a t
 
 ## Attribution and license
 
-Ripple is derived from [ARTEX](https://github.com/mhtsec/ARTEX), which is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). The original Go module path (`github.com/Autumn-27/artex`) is kept for compatibility. Preserve the upstream attribution and license terms when distributing this software.
+Ripple is derived from [ARTEX](https://github.com/mhtsec/ARTEX), which is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). Preserve the upstream attribution and license terms when distributing this software.
 
 Use Ripple only against applications, devices and services you are authorized to test.

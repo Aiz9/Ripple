@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -172,6 +172,7 @@ func (t *ToolSet) mobileJWTProbe() actool.CoreTool {
 				return errf("no captured exchange at history_index %d", *a.HistoryIndex), nil
 			}
 			req := ex[0]
+			recordCoverage(t.taskID, coverageKey(req), "jwt")
 			token := bearerToken(req.Request)
 			if token == "" {
 				return actool.Errorf("no Authorization: Bearer <jwt> in the captured request"), nil

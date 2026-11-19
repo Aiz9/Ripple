@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/staticx"
+	"github.com/Aiz9/ripple/internal/staticx"
 )
 
 // ProtectionPlan describes what runtime bypasses the target app requires.

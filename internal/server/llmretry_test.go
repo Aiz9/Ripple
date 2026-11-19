@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/agent"
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/agent"
+	"github.com/Aiz9/ripple/internal/db"
 )
 
 // With no configuration, resolve all zero values so SDK/task_llm use the same built-in defaults
@@ -93,5 +93,26 @@ func TestRetryRuleClamp(t *testing.T) {
 	}
 	if got.StreamAttempts != 20 || got.StreamInterval != time.Hour {
 		t.Fatalf("stream=%d/%v, want the 20-attempt / 1h caps", got.StreamAttempts, got.StreamInterval)
+	}
+}
+
+func TestModelErrorBackoffFor(t *testing.T) {
+	base := 3 * time.Second
+	// Exponential growth from the base, 1-based attempts.
+	for _, c := range []struct {
+		attempt int
+		want    time.Duration
+	}{
+		{1, 3 * time.Second},
+		{2, 6 * time.Second},
+		{3, 12 * time.Second},
+		{4, 24 * time.Second},
+		{5, 48 * time.Second},
+		{6, modelErrorRetryBackoffMax}, // 96s capped to 60s
+		{20, modelErrorRetryBackoffMax},
+	} {
+		if got := modelErrorBackoffFor(base, c.attempt); got != c.want {
+			t.Errorf("attempt %d: got %v want %v", c.attempt, got, c.want)
+		}
 	}
 }

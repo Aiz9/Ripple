@@ -163,7 +163,7 @@ func (s *logSinkT) importLauncherLogs(dataDir string) {
 			line.Level = levelOf(line.Text)
 		}
 		if line.TS == "" {
-			line.TS = time.Now().Format(time.RFC3339)
+			line.TS = time.Now().UTC().Format(time.RFC3339)
 		}
 		s.add(line)
 		s.mu.Lock()

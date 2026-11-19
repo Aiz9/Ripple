@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/selfupdate"
+	"github.com/Aiz9/ripple/internal/selfupdate"
 )
 
 // releaseCache protects GitHub's 60/IP/hour quota from repeated header checks on full page loads.

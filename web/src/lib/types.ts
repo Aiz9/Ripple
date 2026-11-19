@@ -1508,8 +1508,17 @@ export interface InterceptAudit {
   output_truncated?: boolean;
   execution_ended_at?: string;
 }
+export interface ReferencedScript {
+  path: string;
+  content?: string;
+  truncated?: boolean;
+  error?: string;
+}
+
 export interface InterceptDetail extends InterceptApprovalRow {
   audit: InterceptAudit | null;
+  /** Local script files the pending Bash command would execute (e.g. `python3 final.py`). */
+  referenced_scripts?: ReferencedScript[];
 }
 
 export type TrafficEvidenceRole = "baseline" | "proof" | "verification" | "supporting";

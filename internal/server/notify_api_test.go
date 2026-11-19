@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/notify"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/notify"
 )
 
 // End-to-end finding -> event -> fanout -> real HTTP tests.

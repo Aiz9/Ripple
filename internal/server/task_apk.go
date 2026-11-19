@@ -8,8 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/mobiletest"
+	"github.com/Aiz9/ripple/internal/androidapk"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/mobiletest"
 )
 
 // createAPKTaskReq creates a standard web task whose target is an uploaded APK
@@ -185,20 +186,39 @@ func apkStaticInventory(app *androidApp) string {
 		return ""
 	}
 	const max = 300
-	var b strings.Builder
-	fmt.Fprintf(&b, "STATIC ENDPOINT INVENTORY (%d extracted from the APK; verify/trigger these at runtime and fold into the merged inventory):\n", len(app.StaticURLs))
-	for i, u := range app.StaticURLs {
-		if i >= max {
-			fmt.Fprintf(&b, "- …and %d more (decompile + grep for the full list).\n", len(app.StaticURLs)-max)
-			break
-		}
-		if u.Owner != "" {
-			fmt.Fprintf(&b, "- %s  (%s)\n", u.URL, u.Owner)
+	var urls, paths []androidapk.URLObservation
+	for _, u := range app.StaticURLs {
+		if u.Kind == "path" {
+			paths = append(paths, u)
 		} else {
-			fmt.Fprintf(&b, "- %s\n", u.URL)
+			urls = append(urls, u)
 		}
 	}
+	var b strings.Builder
+	b.WriteString("STATIC API INVENTORY (extracted from the APK). The base URL is frequently switched at RUNTIME (build flavor, remote config, environment toggle), so treat the base URL OBSERVED IN PROXY TRAFFIC as authoritative and combine these with it.\n")
+	if len(urls) > 0 {
+		fmt.Fprintf(&b, "\nBase/full URLs (%d) — candidate hosts; confirm which the app actually uses at runtime:\n", len(urls))
+		writeObs(&b, urls, max)
+	}
+	if len(paths) > 0 {
+		fmt.Fprintf(&b, "\nEndpoint path templates (%d) — host-less routes declared in code (Retrofit/OkHttp). Join each to the runtime base URL; TRIGGER any that never appear in proxy traffic (code-declared but unobserved = shadow/untested):\n", len(paths))
+		writeObs(&b, paths, max)
+	}
 	return b.String()
+}
+
+func writeObs(b *strings.Builder, obs []androidapk.URLObservation, max int) {
+	for i, u := range obs {
+		if i >= max {
+			fmt.Fprintf(b, "- …and %d more (decompile + grep for the full list).\n", len(obs)-max)
+			return
+		}
+		if u.Owner != "" {
+			fmt.Fprintf(b, "- %s  (%s)\n", u.URL, u.Owner)
+		} else {
+			fmt.Fprintf(b, "- %s\n", u.URL)
+		}
+	}
 }
 
 // apkTaskGoal is the default MASVS findings-report goal for an APK task, used to
@@ -253,6 +273,7 @@ func apkTaskDescription(app *androidApp, scopeHosts []string, extra string) stri
 	b.WriteString("- BFLA (API5): invoke admin/privileged functions as a low-privilege identity.\n")
 	b.WriteString("- Unrestricted business flows (API6) & BUSINESS LOGIC: tamper amount/quantity/currency, negative/overflow/decimal values, invalid state transitions, replay/duplicate transactions, skip required steps, race conditions; verify server-side invariants (e.g. balance_before − balance_after = amount_debited).\n")
 	b.WriteString("- Injection, SSRF, and excessive data exposure where the endpoint's parameters allow. Every finding needs cross-identity or baseline-vs-tampered response evidence.\n")
+	b.WriteString("REPLAY MECHANICS (read before authz testing): (1) ALL egress from this task — including Bash curl — is captured by the same Burp, so `mobile_traffic_replay` and direct HTTP hit the identical proxy; prefer the tool so `as_role` and the authz sweep work, and do NOT conclude the replay/authz tools are \"broken\" or \"env-specific\" from a target 4xx or an argument error — report the exact tool error instead. (2) `history_index` is an absolute position that shifts as traffic is captured/rotated — re-read `mobile_traffic_history` right before an index replay, or pass `request`+`host` explicitly. (3) Identity tokens are static; if the target is single-session (a new login invalidates the previous token), give each account a DISTINCT device/registration id at login and refresh the role via `mobile_identity_set` immediately before replaying as it.\n")
 	if inv := apkStaticInventory(app); inv != "" {
 		b.WriteString("\n" + inv)
 	}

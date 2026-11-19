@@ -7,7 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	acperm "github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -70,6 +71,10 @@ type ToolSet struct {
 	GoalMet   bool
 	Reason    string
 	writes    WriteCounts
+	// liveLeases holds exclusive live-work leases this worker has acquired (keyed by
+	// resource, e.g. "account:98XXXXXXXX") so release_live_lease frees the right one.
+	// One worker runs one intent on one goroutine, so no mutex is needed.
+	liveLeases map[string]*devicelab.Lease
 	// killWork, if set, terminates a running work by intent id (engine callback,
 	// wired by the planner). nil = the kill_work tool reports unavailable.
 	killWork func(intentID int64) error
@@ -1865,7 +1870,7 @@ func (t *ToolSet) getWorkerOutput() actool.CoreTool {
 				return actool.Errorf(err.Error()), nil
 			}
 			if intentNode == nil || intentNode.Kind != db.KindIntent {
-				return actool.Errorf("intent_id does not belong to this task or a directly related task"), nil
+				return actool.Errorf("intent_id does not belong to this task or a directly related task. Use graph_overview or list_facts to find THIS task's own intents; do not retry with the same id"), nil
 			}
 			acts, _, err := t.ts.ActivityListWithSources(id, 0, 1000)
 			if err != nil {
@@ -1959,7 +1964,7 @@ func (t *ToolSet) getWorkerTrace() actool.CoreTool {
 				return actool.Errorf(nodeErr.Error()), nil
 			}
 			if intentNode == nil || intentNode.Kind != db.KindIntent {
-				return actool.Errorf("intent_id does not belong to this task or a directly related task"), nil
+				return actool.Errorf("intent_id does not belong to this task or a directly related task. Use graph_overview or list_facts to find THIS task's own intents; do not retry with the same id"), nil
 			}
 			// ③ detail drill-down by step ids, thinking excluded by the store.
 			if len(a.StepIDs) > 0 {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 )
 
 // findingBlock is a deterministically-verified finding ready to persist. It carries

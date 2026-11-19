@@ -12,9 +12,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/internal/agent"
-	"github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/intercept"
+	"github.com/Aiz9/ripple/internal/agent"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/intercept"
 	actool "github.com/Autumn-27/norma/tool"
 )
 

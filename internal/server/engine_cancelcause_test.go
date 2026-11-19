@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/agent"
+	"github.com/Aiz9/ripple/internal/agent"
 )
 
 func TestPauseCancelsWithNamedCause(t *testing.T) {

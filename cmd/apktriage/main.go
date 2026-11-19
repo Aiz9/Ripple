@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Autumn-27/artex/internal/androidapk"
+	"github.com/Aiz9/ripple/internal/androidapk"
 )
 
 func main() {

@@ -19,13 +19,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/agent"
-	"github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/intercept"
-	"github.com/Autumn-27/artex/internal/llmpool"
-	"github.com/Autumn-27/artex/internal/llmrec"
-	"github.com/Autumn-27/artex/internal/report"
-	"github.com/Autumn-27/artex/internal/traffic"
+	"github.com/Aiz9/ripple/internal/agent"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/intercept"
+	"github.com/Aiz9/ripple/internal/llmpool"
+	"github.com/Aiz9/ripple/internal/llmrec"
+	"github.com/Aiz9/ripple/internal/report"
+	"github.com/Aiz9/ripple/internal/traffic"
 	"github.com/Autumn-27/norma/llm"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
@@ -36,7 +36,7 @@ import (
 // Defaults to "dev" for local builds. Exposed to the frontend via GET /api/health.
 var BuildVersion = "dev"
 
-// Server exposes the ARTEX backend over a JSON HTTP API for the shadcn/ui
+// Server exposes the Ripple backend over a JSON HTTP API for the shadcn/ui
 // frontend.
 type Server struct {
 	m      *Manager
@@ -44,7 +44,9 @@ type Server struct {
 	ctx    context.Context
 
 	skillDir string // root directory for skill subdirectories
-	jwtKey   []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
+	jwtKey   []byte       // HS256 signing key; guarded by jwtMu (rotated on password change)
+	jwtMu    sync.RWMutex // guards jwtKey across rotation
+	keyDir   string       // directory holding jwt.key, for key rotation
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -146,7 +148,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	if err != nil {
 		log.Fatalf("[auth] JWT key: %v", err)
 	}
-	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, chatBusy: map[string]bool{},
+	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, keyDir: keyDir, chatBusy: map[string]bool{},
 		chatCancel: map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},
@@ -828,6 +830,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/notify/deliveries/{id}/retry", s.notifyRetryDelivery)
 	mux.HandleFunc("POST /api/settings/web-search/test", s.testWebSearch)
 	mux.HandleFunc("GET /api/report", s.getReport)
+	mux.HandleFunc("GET /api/report/export", s.reportDocExport)
 	mux.HandleFunc("GET /api/chat/mentions", s.searchChatMentions)
 	mux.HandleFunc("POST /api/chat", s.chat)
 	mux.HandleFunc("POST /api/chat/upload", s.chatUpload) // Method-1 upload persists in conversation/task uploads/.
@@ -962,7 +965,7 @@ func (s *Server) Handler() http.Handler {
 // --- handlers ---
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{"ok": true, "service": "artex", "version": BuildVersion})
+	writeJSON(w, 200, map[string]any{"ok": true, "service": "ripple", "version": BuildVersion})
 }
 
 func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
@@ -2140,6 +2143,65 @@ func (s *Server) getFinding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, dto)
 }
 
+// reportAssetsDir is the directory holding the firm VAPT branding (logo, cover
+// wave, branding.json). Kept out of git; absent assets fall back to a neutral
+// look. Override with ANDROIDLAB_REPORT_ASSETS.
+func reportAssetsDir() string {
+	if d := os.Getenv("ANDROIDLAB_REPORT_ASSETS"); d != "" {
+		return d
+	}
+	return "report_assets"
+}
+
+var reportNameUnsafe = regexp.MustCompile(`[^\p{L}\p{N}._-]+`)
+
+func reportFilename(name, format string) string {
+	name = reportNameUnsafe.ReplaceAllString(strings.TrimSpace(name), "_")
+	name = strings.Trim(name, "._")
+	if name == "" {
+		name = "report"
+	}
+	return "VAPT-" + name + "." + format
+}
+
+// reportDocExport downloads the active task's findings as a templated PDF or
+// DOCX laid out like the firm VAPT report, with the task name on the cover
+// (GET /api/report/export?task=<id>&format=pdf|docx). The on-screen Markdown
+// report (getReport) is unchanged; this is a separate download.
+func (s *Server) reportDocExport(w http.ResponseWriter, r *http.Request) {
+	t := s.m.ResolveTask(r.URL.Query().Get("task"))
+	if t == nil {
+		writeErr(w, 404, "no active task")
+		return
+	}
+	format := r.URL.Query().Get("format")
+	if format != "pdf" && format != "docx" {
+		writeErr(w, 400, "format must be pdf or docx")
+		return
+	}
+	fs, err := s.m.pg.ListFindingsForExport(db.FindingFilter{TaskID: t.ID}, nil)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	taskName := t.Name
+	if taskName == "" {
+		taskName = t.Description
+	}
+	htmlDoc := report.FindingsHTML(taskName, fs, report.LoadBranding(reportAssetsDir()), time.Now())
+
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+	data, contentType, err := report.RenderDoc(ctx, []byte(htmlDoc), format)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, reportFilename(taskName, format)))
+	_, _ = w.Write(data)
+}
+
 // findingsExport exports Findings-page results.
 //
 // scope: filtered (page filters), all, or selected IDs.
@@ -2189,7 +2251,7 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stage, err := os.MkdirTemp("", "artex-finding-export-")
+	stage, err := os.MkdirTemp("", "ripple-finding-export-")
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -2207,6 +2269,17 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch format {
+	case "pdf", "docx":
+		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+		defer cancel()
+		htmlDoc := report.FindingsHTML(strings.TrimSpace(q.Get("title")), fs, report.LoadBranding(reportAssetsDir()), now)
+		data, contentType, err := report.RenderDoc(ctx, []byte(htmlDoc), format)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		setDownload(contentType, "findings-"+stamp+"."+format)
+		_, _ = w.Write(data)
 	case "md-single":
 		setDownload("text/markdown; charset=utf-8", "findings-"+stamp+".md")
 		_, _ = w.Write([]byte(report.FindingsMarkdown(fs, now)))
@@ -3021,7 +3094,7 @@ func (s *Server) getLogsHistory(w http.ResponseWriter, r *http.Request) {
 	for _, r := range rows {
 		items = append(items, LogLine{
 			DBID:  r.ID,
-			TS:    r.CreatedAt.Format(time.RFC3339),
+			TS:    r.CreatedAt.UTC().Format(time.RFC3339),
 			Level: r.Level,
 			Tag:   r.Tag,
 			Text:  r.Text,
@@ -4022,7 +4095,7 @@ func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Id")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)
 			return

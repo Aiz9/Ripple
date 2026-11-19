@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Autumn-27/artex/internal/staticx"
+	"github.com/Aiz9/ripple/internal/staticx"
 )
 
 func TestPlanProtections_NoProtections(t *testing.T) {

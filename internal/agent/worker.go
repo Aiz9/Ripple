@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/intercept"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/intercept"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
@@ -240,9 +240,9 @@ const workerDefaultTmpl = `You are the "Executor" (work agent) of an authorized 
 **Boundaries (Red Lines)**:
 1. **Focus solely on your assigned intent**. If you observe promising leads outside this intent during exploration (e.g., leaked paths in errors, potential pivot points, suspected entry points for another chain), mention them briefly in the fact summary for the planner.
 2. Initial resistance (payload filtered, 404, blind injection with no echo) does NOT mean the path is exhausted—attempt standard bypass techniques before concluding.
-3. Operate strictly within authorized scope. If [Operational Constraints] are attached at the top of the prompt, they are highest-priority red lines: self-check every command/probe before executing, and do not execute if prohibited.
+3. Operate strictly within authorized scope. If [Operational Constraints] are attached at the top of the prompt, they are highest-priority red lines: self-check every command/probe before executing, and do not execute if prohibited. The platform hard-blocks any request to a deletion endpoint (/delete /remove /unlink /erase /destroy, any method) as a policy red line — never attempt one or try to reword it; test the destructive capability by other means (e.g. authorization on the create/read route) and record the delete path as blocked.
 
-**Coverage within your intent (exhaustive, not illustrative)**: If your intent names a vulnerability class or a surface (authz / IDOR / BOLA / BFLA, injection, broken access control, business logic, sensitive-data exposure…), test EVERY in-scope instance, not a single example. First inventory the real surface — mobile_traffic_history / traffic_search for the app's live API (the top-priority source), plus list_assets and endpoints already discovered — then exercise each endpoint/route/parameter/HTTP method in scope. For authorization/IDOR/BOLA, replay each object or endpoint with BOTH supplied test identities (mobile_traffic_replay) and compare the responses; a 2xx alone is not proof. For business-logic intents, walk the complete workflow end-to-end (e.g. transfer: amount → beneficiary → confirm → OTP/step-up binding → replay/duplicate). Record a result for each instance. When several instances share ONE root cause and remediation, consolidate them into a SINGLE finding/fact whose evidence lists every affected endpoint/parameter/role; report separately only when root cause, impact, or fix genuinely differ. In your closing summary, state which parts of the surface you covered and which remain, so the planner can dispatch the rest.
+**Coverage within your intent (exhaustive, not illustrative)**: If your intent names a vulnerability class or a surface (authz / IDOR / BOLA / BFLA, injection, broken access control, business logic, sensitive-data exposure…), test EVERY in-scope instance, not a single example. First inventory the real surface — mobile_traffic_history / traffic_search for the app's live API (the top-priority source), plus list_assets and endpoints already discovered — then exercise each endpoint/route/parameter/HTTP method in scope. For authorization/IDOR/BOLA, replay each object or endpoint with BOTH supplied test identities (mobile_traffic_replay) and compare the responses; a 2xx alone is not proof. Do not stop at same-identity A-vs-B swaps: if the app or backend exposes more than one login/token path (app, convergent/third-party, SSO, account-link), mint a token from EACH and replay it across every API version family (legacy/v1 AND v2) — a token minted for one audience accepted on another (e.g. on a fund-transfer or QR-payment route) is a critical authorization-boundary bypass. Test every enumerated endpoint family at least once, not only the routes the app itself calls. Before any authenticated login to a shared test account, acquire_live_lease("account:<id>") so you do not evict a peer worker's session; release_live_lease when done. For business-logic intents, walk the complete workflow end-to-end (e.g. transfer: amount → beneficiary → confirm → OTP/step-up binding → replay/duplicate). Record a result for each instance. When several instances share ONE root cause and remediation, consolidate them into a SINGLE finding/fact whose evidence lists every affected endpoint/parameter/role; report separately only when root cause, impact, or fix genuinely differ. In your closing summary, state which parts of the surface you covered and which remain, so the planner can dispatch the rest.
 
 **Persist observations immediately** (only data written to the graph counts; write results as you discover them, do not wait until step limits are reached):
 - **New assets/resources → insert_assets (Asset Graph)**: Subdomains, services, endpoints, fingerprints, credentials, and assets themselves. Only register assets here; do not write conclusions here.
@@ -379,6 +379,7 @@ func (w *Worker) ExecuteWithMessage(ctx context.Context, name string, taskID int
 
 func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.AssetStore, ts *db.ExplorationStore, intent *db.Node, hooks harness.HookRunner, emit func(db.Activity), enr EnrichTrigger, notifyFinding func(int64, string), requestID, message string) (harness.TerminalReason, WriteCounts, error) {
 	tsx := NewToolSet(ts, name)
+	defer tsx.ReleaseLeases() // free any live-work leases when this run ends (TTL is only the crash safety net)
 	tsx.SetFindingRecorder(w.findingRecorder)
 	tsx.SetTaskID(taskID)
 	coverageEnabled := as == nil || as.CoverageEnabled(taskID)

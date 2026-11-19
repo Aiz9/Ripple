@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/guard"
-	"github.com/Autumn-27/artex/internal/intercept"
-	"github.com/Autumn-27/artex/internal/llmrec"
+	"github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/guard"
+	"github.com/Aiz9/ripple/internal/intercept"
+	"github.com/Aiz9/ripple/internal/llmrec"
 	"github.com/Autumn-27/norma/llm"
 )
 
@@ -534,7 +534,13 @@ func (s *Server) interceptDetail(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "not found")
 		return
 	}
-	writeJSON(w, 200, detail)
+	writeJSON(w, 200, struct {
+		*db.InterceptDetail
+		ReferencedScripts []referencedScript `json:"referenced_scripts,omitempty"`
+	}{
+		InterceptDetail:   detail,
+		ReferencedScripts: referencedScripts(detail.ToolName, detail.ToolInput, s.m.dir),
+	})
 }
 
 // The navigation endpoint returns only the original call and its paired result.

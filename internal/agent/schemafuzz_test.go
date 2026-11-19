@@ -11,9 +11,7 @@ func TestRawKind(t *testing.T) {
 	}
 }
 
-func TestBodyMutations(t *testing.T) {
-	muts := bodyMutations(`{"amount":100,"note":"hi"}`)
-	// per field: typeflip + null + removed (+ oversized for strings).
+func mutationKinds(muts []mutation) map[string]map[string]bool {
 	kinds := map[string]map[string]bool{}
 	for _, m := range muts {
 		if kinds[m.Field] == nil {
@@ -21,21 +19,44 @@ func TestBodyMutations(t *testing.T) {
 		}
 		kinds[m.Field][m.Kind] = true
 	}
+	return kinds
+}
+
+func TestRequestMutationsJSON(t *testing.T) {
+	raw := "POST /x HTTP/1.1\r\nHost: h\r\nContent-Type: application/json\r\n\r\n{\"amount\":100,\"note\":\"hi\"}"
+	muts := requestMutations(raw)
+	kinds := mutationKinds(muts)
 	if !kinds["amount"]["number→string"] || !kinds["amount"]["null"] || !kinds["amount"]["removed"] {
 		t.Errorf("amount mutations incomplete: %v", kinds["amount"])
 	}
 	if !kinds["note"]["string→number"] || !kinds["note"]["oversized"] || !kinds["note"]["removed"] {
 		t.Errorf("note mutations incomplete: %v", kinds["note"])
 	}
-	// each mutation body must be valid JSON-ish (non-empty, contains a brace)
 	for _, m := range muts {
-		if m.body == "" || m.body[0] != '{' {
-			t.Errorf("bad mutation body for %s/%s: %q", m.Field, m.Kind, m.body)
+		if m.req == "" || !contains(m.req, "POST /x HTTP/1.1") {
+			t.Errorf("mutation not a full request for %s/%s", m.Field, m.Kind)
 		}
 	}
-	// non-JSON body -> no mutations
-	if len(bodyMutations("not json")) != 0 {
-		t.Error("expected no mutations for non-JSON body")
+	// no body -> no mutations
+	if len(requestMutations("GET /x HTTP/1.1\r\nHost: h\r\n\r\n")) != 0 {
+		t.Error("expected no mutations for a request with no body")
+	}
+}
+
+func TestRequestMutationsForm(t *testing.T) {
+	raw := "POST /x HTTP/1.1\r\nHost: h\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\namount=100&note=hi"
+	muts := requestMutations(raw)
+	kinds := mutationKinds(muts)
+	if len(kinds) != 2 {
+		t.Fatalf("expected amount+note fields, got %v", kinds)
+	}
+	if !kinds["amount"]["removed"] || !kinds["amount"]["oversized"] {
+		t.Errorf("form amount mutations incomplete: %v", kinds["amount"])
+	}
+	for _, m := range muts {
+		if !contains(m.req, "amount=") && m.Kind != "removed" {
+			continue
+		}
 	}
 }
 

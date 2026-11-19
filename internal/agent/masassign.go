@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -164,10 +164,11 @@ func (t *ToolSet) mobileMassAssignment() actool.CoreTool {
 				return errf("no captured exchange at history_index %d", *a.HistoryIndex), nil
 			}
 			req := ex[0]
-			body := httpBody(req.Request)
-			if strings.TrimSpace(body) == "" || !strings.HasPrefix(strings.TrimSpace(body), "{") {
-				return actool.Errorf("captured request has no JSON object body to extend"), nil
+			recordCoverage(t.taskID, coverageKey(req), "mass-assignment")
+			if !hasMutableBody(req.Request) {
+				return actool.Errorf("captured request has no JSON or form body to extend"), nil
 			}
+			_, presentFields := bodyFieldTypes(req.Request)
 			port := 443
 			if !req.TLS {
 				port = 80
@@ -185,7 +186,7 @@ func (t *ToolSet) mobileMassAssignment() actool.CoreTool {
 			}
 			fields := make([]string, 0, len(inject))
 			for f := range inject {
-				if !bodyHasField(body, f) {
+				if _, present := presentFields[f]; !present {
 					fields = append(fields, f)
 				}
 			}
@@ -199,11 +200,11 @@ func (t *ToolSet) mobileMassAssignment() actool.CoreTool {
 			var results []res
 			var applied []string
 			for _, f := range fields {
-				nb, ok := addOrSetJSONField(body, f, inject[f])
+				tampered, ok := addBodyFieldRaw(req.Request, f, inject[f])
 				if !ok {
 					continue
 				}
-				resp, e := c.SendRequest(ctx, req.Host, port, req.TLS, setRequestBody(req.Request, nb))
+				resp, e := c.SendRequest(ctx, req.Host, port, req.TLS, tampered)
 				if e != nil {
 					continue
 				}

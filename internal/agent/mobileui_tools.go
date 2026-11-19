@@ -10,7 +10,7 @@ import (
 
 	actool "github.com/Autumn-27/norma/tool"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 )
 
 // No-root adb UI-automation tools for the task agent.
@@ -104,7 +104,8 @@ func (t *ToolSet) mobileDeviceStatus() actool.CoreTool {
 
 func (t *ToolSet) mobileUIDump() actool.CoreTool {
 	return readTool("mobile_ui_dump",
-		"Dump the device's current screen as a compact UI tree (uiautomator). Returns actionable nodes with a stable `ref`, text/desc, class, bounds [x1,y1,x2,y2], and flags (clickable/editable/scrollable). Use a node's ref with mobile_ui_type, or its bounds center with mobile_ui_tap.",
+		"Dump the device's current screen as a compact UI tree (uiautomator). Returns actionable nodes with a stable `ref`, text/desc, class, bounds [x1,y1,x2,y2], and flags (clickable/editable/scrollable). Use a node's ref with mobile_ui_type, or its bounds center with mobile_ui_tap.\n"+
+			"A dump/screenshot reflects ONLY the moment it was taken. A session can expire or the app can navigate away between steps, so never rely on a prior capture as evidence for a finding — re-dump and confirm the current screen's identity (title/known text) first. If you cannot positively identify the screen a capture shows, do not cite it; recapture or mark the step blocked.",
 		obj(map[string]any{}),
 		func(ctx context.Context, _ json.RawMessage) (actool.Result, error) {
 			dev, err := t.mobileDevice(ctx, "")

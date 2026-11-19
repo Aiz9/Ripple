@@ -110,3 +110,6 @@ llm.key
 /validation/results/
 /validation/.venv/
 /validation/evidence-pack/
+
+# --- Firm VAPT report branding/template (confidential; never commit) --------
+/report_assets/

@@ -2,6 +2,7 @@ import { MOCK } from "@/lib/mock/enabled";
 
 type Diagnostic = { source: "browser" | "unhandledrejection" | "console" | "network"; message: string; stack: string; page: string; ts: string };
 const storageKey = "android_lab_pending_diagnostics";
+const MAX_PENDING = 50;
 let pending: Diagnostic[] | undefined;
 let flushing = false;
 
@@ -23,8 +24,25 @@ function queue() {
 function persist() { try { localStorage.setItem(storageKey, JSON.stringify(queue())); } catch { /* Keep the in-memory queue if browser storage is unavailable. */ } }
 export function reportClientError(source: Diagnostic["source"], message: string, error?: unknown) {
   if (MOCK || typeof window === "undefined") return;
+  const cleanedMsg = clean(message).slice(0, 8000);
+  // Ignore offline, server restart, or connection refused drops
+  if (
+    cleanedMsg.includes("Failed to fetch") ||
+    cleanedMsg.includes("NetworkError") ||
+    cleanedMsg.includes("Load failed")
+  ) {
+    return;
+  }
   const stack = error instanceof Error ? error.stack || "" : "";
-  queue().push({source, message: clean(message).slice(0, 8000), stack: clean(stack).slice(0, 16000), page: window.location.pathname, ts: new Date().toISOString()});
+  const q = queue();
+  // Deduplicate consecutive identical failures (e.g., background polling ticks while offline)
+  if (q.length > 0 && q[q.length - 1].message === cleanedMsg && q[q.length - 1].source === source) {
+    return;
+  }
+  q.push({source, message: cleanedMsg, stack: clean(stack).slice(0, 16000), page: window.location.pathname, ts: new Date().toISOString()});
+  if (q.length > MAX_PENDING) {
+    q.splice(0, q.length - MAX_PENDING);
+  }
   persist();
   void flushClientDiagnostics();
 }

@@ -15,6 +15,11 @@ type URLObservation struct {
 	URL   string `json:"url"`
 	File  string `json:"file"`
 	Owner string `json:"owner,omitempty"`
+	// Kind is "" (or "url") for a full http(s):// URL, or "path" for a host-less
+	// endpoint path template (e.g. a Retrofit @GET path). Path templates combine
+	// with the base URL resolved at RUNTIME (observed in proxy traffic), which the
+	// static base URL often is not.
+	Kind string `json:"kind,omitempty"`
 }
 
 var literalURL = regexp.MustCompile(`https?://[A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%{}-]{4,1000}`)
@@ -125,6 +130,23 @@ func DiscoverApplicationURLs(apkPath, pkg string) ([]URLObservation, []string, e
 			if len(out) >= 2000 {
 				warnings = append(warnings, "APK URL discovery stopped at 2000 observations.")
 				return out, warnings, nil
+			}
+		}
+		// Host-less API path templates from code (Retrofit/OkHttp etc.). These carry
+		// no base URL — the agent combines them with the base observed in runtime
+		// proxy traffic, which the app often resolves differently at runtime.
+		if strings.HasSuffix(name, ".dex") {
+			for _, p := range dexAPIPaths(data) {
+				key := p + "\x00" + entry.Name
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				out = append(out, URLObservation{URL: p, File: entry.Name, Owner: pkg + "/path", Kind: "path"})
+				if len(out) >= 2000 {
+					warnings = append(warnings, "APK URL discovery stopped at 2000 observations.")
+					return out, warnings, nil
+				}
 			}
 		}
 	}

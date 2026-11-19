@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -85,15 +85,8 @@ func injectableTargets(rawRequest string) []injectTarget {
 			}
 		}
 	}
-	if b := strings.TrimSpace(httpBody(rawRequest)); strings.HasPrefix(b, "{") {
-		var m map[string]json.RawMessage
-		if json.Unmarshal([]byte(b), &m) == nil {
-			for k, v := range m {
-				if strings.HasPrefix(strings.TrimSpace(string(v)), `"`) { // string field
-					add("body", k)
-				}
-			}
-		}
+	for _, name := range bodyStringFields(rawRequest) {
+		add("body", name)
 	}
 	return out
 }
@@ -132,11 +125,7 @@ func injectInto(rawRequest string, target injectTarget, payload string) (string,
 	case "query":
 		return setQueryValue(rawRequest, target.Name, payload)
 	case "body":
-		nb, ok := setJSONField(httpBody(rawRequest), target.Name, strconv.Quote(payload))
-		if !ok {
-			return "", false
-		}
-		return setRequestBody(rawRequest, nb), true
+		return setBodyFieldString(rawRequest, target.Name, payload)
 	}
 	return "", false
 }
@@ -181,6 +170,7 @@ func (t *ToolSet) mobileInjectProbe() actool.CoreTool {
 				return errf("no captured exchange at history_index %d", *a.HistoryIndex), nil
 			}
 			req := ex[0]
+			recordCoverage(t.taskID, coverageKey(req), "injection")
 			targets := injectableTargets(req.Request)
 			if len(targets) == 0 {
 				return actool.Errorf("no injectable string parameters (query or JSON body) in the captured request"), nil

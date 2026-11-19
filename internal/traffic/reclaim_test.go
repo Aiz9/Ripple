@@ -15,7 +15,7 @@ import (
 func bulkRecord(tr *Traffic, host string, n, size int) {
 	body := []byte(strings.Repeat("A", size))
 	for i := 0; i < n; i++ {
-		tr.record(newFlow(host, "GET", fmt.Sprintf("/blob/%d", i), nil, body,
+		tr.recordFlow(newFlow(host, "GET", fmt.Sprintf("/blob/%d", i), nil, body,
 			withRespType("application/octet-stream")))
 	}
 }
@@ -81,7 +81,7 @@ func TestReclaimMergesFTSTombstones(t *testing.T) {
 	for round := 0; round < 4; round++ {
 		host := fmt.Sprintf("fts%d.example.com", round)
 		for i := 0; i < 20; i++ {
-			tr.record(newFlow(host, "GET", fmt.Sprintf("/p/%d", i), nil,
+			tr.recordFlow(newFlow(host, "GET", fmt.Sprintf("/p/%d", i), nil,
 				[]byte(strings.Repeat("secret token \u4e2d\u6587\u6b63\u6587 padding ", 200))))
 		}
 		if _, err := tr.DeleteHostsExact([]string{host}); err != nil {
@@ -165,8 +165,8 @@ func TestDeleteAllPurgesAndCompacts(t *testing.T) {
 	bulkRecord(tr, "b.example.com", 10, 200*1024)
 	// A text body so the full-text index has real content, and a spilled one so a
 	// blob exists to collect.
-	tr.record(newFlow("c.example.com", "GET", "/page", nil, []byte(strings.Repeat("secret-token ", 500))))
-	tr.record(newFlow("c.example.com", "GET", "/big", nil,
+	tr.recordFlow(newFlow("c.example.com", "GET", "/page", nil, []byte(strings.Repeat("secret-token ", 500))))
+	tr.recordFlow(newFlow("c.example.com", "GET", "/big", nil,
 		[]byte(strings.Repeat("B", maxInlineBody+1024)), withRespType("application/sql")))
 	// An orphaned legacy directory: no index row points at it, so only a
 	// clear-everything should take it.
@@ -211,7 +211,7 @@ func TestDeleteAllPurgesAndCompacts(t *testing.T) {
 		t.Fatalf("orphaned historical host directory not cleaned up:%v", err)
 	}
 	// Recording must keep working against the freshly rewritten file.
-	tr.record(newFlow("d.example.com", "GET", "/after", nil, []byte("\u6e05\u7a7a\u540e\u4ecd\u53ef\u5f55\u5236")))
+	tr.recordFlow(newFlow("d.example.com", "GET", "/after", nil, []byte("\u6e05\u7a7a\u540e\u4ecd\u53ef\u5f55\u5236")))
 	if n, err := tr.Count(); err != nil || n != 1 {
 		t.Fatalf("after clearing Count=(%d,%v), want (1,nil)", n, err)
 	}

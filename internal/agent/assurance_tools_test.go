@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 )
 
 func callTool(t *testing.T, name string, ts *ToolSet, payload any) (string, bool) {
@@ -174,4 +174,72 @@ func TestSpawnValidationGuard(t *testing.T) {
 	if spawned != 0 {
 		t.Fatalf("validation intent: want 0 re-spawn, got %d", spawned)
 	}
+}
+
+func TestHighRiskEndpointPattern(t *testing.T) {
+	hits := []string{
+		"POST /webbackend/convergent/mobile/payment",
+		"POST /payment/internalTransfer",
+		"POST /v2/qr/payment/pay",
+		"POST /convergent/login",
+		"POST /thirdParty/login",
+		"GET /v2/token",
+		"POST /v2/send/money/book/transfer",
+		"POST /account/link/login",
+	}
+	for _, h := range hits {
+		if !highRiskEndpointPattern.MatchString(h) {
+			t.Errorf("expected high-risk match: %q", h)
+		}
+	}
+	misses := []string{
+		"GET /v2/profile/detail",
+		"GET /v2/notification/list",
+		"POST /v2/kyc/customer/information",
+	}
+	for _, m := range misses {
+		if highRiskEndpointPattern.MatchString(m) {
+			t.Errorf("did not expect high-risk match: %q", m)
+		}
+	}
+}
+
+func TestInvalidMeasurement(t *testing.T) {
+	bad := []string{
+		"accepts 200 but post_balance=None (probe persistence bug)",
+		"FonePay hub outage persists, 500 Connection reset",
+		"read tcp ... connection timed out",
+	}
+	for _, e := range bad {
+		if !invalidMeasurement(e) {
+			t.Errorf("expected invalid measurement: %q", e)
+		}
+	}
+	good := "accept returned 400, no bookingId created; balance 16120.28 unchanged, debits=0 confirmed live"
+	if invalidMeasurement(good) {
+		t.Errorf("clean evidence wrongly flagged: %q", good)
+	}
+}
+
+func TestLiveLeaseToolAcquireRelease(t *testing.T) {
+	ts := &ToolSet{worker: "work#1"}
+	out, isErr := callTool(t, "acquire_live_lease", ts, map[string]any{"resource": "account:999"})
+	if isErr || !strings.Contains(out, "acquired=true") {
+		t.Fatalf("acquire: out=%q isErr=%v", out, isErr)
+	}
+	// A different worker must be refused while held.
+	ts2 := &ToolSet{worker: "work#2"}
+	out2, _ := callTool(t, "acquire_live_lease", ts2, map[string]any{"resource": "account:999"})
+	if !strings.Contains(out2, "acquired=false") {
+		t.Fatalf("second worker should be refused: %q", out2)
+	}
+	// Release frees it.
+	if _, isErr := callTool(t, "release_live_lease", ts, map[string]any{"resource": "account:999"}); isErr {
+		t.Fatal("release errored")
+	}
+	out3, _ := callTool(t, "acquire_live_lease", ts2, map[string]any{"resource": "account:999"})
+	if !strings.Contains(out3, "acquired=true") {
+		t.Fatalf("after release, second worker should acquire: %q", out3)
+	}
+	ts2.ReleaseLeases()
 }

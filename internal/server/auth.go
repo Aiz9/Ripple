@@ -68,13 +68,9 @@ func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	if data, err := os.ReadFile(path); err == nil && len(strings.TrimSpace(string(data))) >= 32 {
 		return []byte(strings.TrimSpace(string(data))), nil
 	}
-	buf := make([]byte, 32)
-	for i := range buf {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(keyChars))))
-		if err != nil {
-			return nil, fmt.Errorf("generate jwt key: %w", err)
-		}
-		buf[i] = keyChars[n.Int64()]
+	buf, err := newJWTKey()
+	if err != nil {
+		return nil, err
 	}
 	if err := os.WriteFile(path, buf, 0600); err != nil {
 		return nil, fmt.Errorf("write jwt key: %w", err)
@@ -83,10 +79,48 @@ func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	return buf, nil
 }
 
-// signJWT issues a 7-day HS256 token for user ARTEX.
+// newJWTKey generates a random 32-character HS256 signing key.
+func newJWTKey() ([]byte, error) {
+	buf := make([]byte, 32)
+	for i := range buf {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(keyChars))))
+		if err != nil {
+			return nil, fmt.Errorf("generate jwt key: %w", err)
+		}
+		buf[i] = keyChars[n.Int64()]
+	}
+	return buf, nil
+}
+
+// signingKey returns the current HS256 key under the read lock, so a request that
+// verifies a token can't race a password-change key rotation.
+func (s *Server) signingKey() []byte {
+	s.jwtMu.RLock()
+	defer s.jwtMu.RUnlock()
+	return s.jwtKey
+}
+
+// rotateSigningKey generates a fresh signing key and persists it, which invalidates
+// every token signed with the old key. Called on password change so a token obtained
+// under the old password (e.g. a leaked one) cannot outlive it.
+func (s *Server) rotateSigningKey() error {
+	k, err := newJWTKey()
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.keyDir, jwtKeyFilename), k, 0o600); err != nil {
+		return fmt.Errorf("write jwt key: %w", err)
+	}
+	s.jwtMu.Lock()
+	s.jwtKey = k
+	s.jwtMu.Unlock()
+	return nil
+}
+
+// signJWT issues a 7-day HS256 token for user Ripple.
 func signJWT(key []byte) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Subject:   "ARTEX",
+		Subject:   "Ripple",
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtTTL)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}).SignedString(key)
@@ -104,12 +138,15 @@ func verifyJWT(tokenStr string, key []byte) bool {
 }
 
 // extractToken reads the JWT from Authorization: Bearer header,
-// artex_token cookie, or ?token= query param (for SSE connections).
+// ripple_token cookie, or ?token= query param (for SSE connections).
 func extractToken(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimPrefix(h, "Bearer ")
 	}
-	if c, err := r.Cookie("artex_token"); err == nil && c.Value != "" {
+	if c, err := r.Cookie("ripple_token"); err == nil && c.Value != "" {
+		return c.Value
+	}
+	if c, err := r.Cookie("android_lab_token"); err == nil && c.Value != "" {
 		return c.Value
 	}
 	return r.URL.Query().Get("token")
@@ -129,7 +166,7 @@ func (s *Server) requireAuth(h http.Handler) http.Handler {
 			writeErr(w, 401, "Unauthorized")
 			return
 		}
-		if !verifyJWT(tok, s.jwtKey) {
+		if !verifyJWT(tok, s.signingKey()) {
 			writeErr(w, 401, "Invalid or expired token")
 			return
 		}
@@ -197,7 +234,7 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 403, "Password already configured")
 		return
 	}
-	tok, err := signJWT(s.jwtKey)
+	tok, err := signJWT(s.signingKey())
 	if err != nil {
 		writeErr(w, 500, "Failed to generate token")
 		return
@@ -213,7 +250,7 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 	if pg == nil {
 		return
 	}
-	if !verifyJWT(extractToken(r), s.jwtKey) {
+	if !verifyJWT(extractToken(r), s.signingKey()) {
 		writeErr(w, 401, "Unauthorized")
 		return
 	}
@@ -255,7 +292,18 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "Save failed: "+err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true})
+	// Rotate the signing key so every token issued under the old password stops
+	// working, then hand this caller a fresh token so their own session survives.
+	if err := s.rotateSigningKey(); err != nil {
+		writeErr(w, 500, "Password changed but session key rotation failed; please log in again")
+		return
+	}
+	tok, err := signJWT(s.signingKey())
+	if err != nil {
+		writeErr(w, 500, "Failed to generate token")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "token": tok})
 }
 
 // POST /api/auth/login — validates username/password and returns a JWT.
@@ -272,7 +320,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Invalid request format")
 		return
 	}
-	if req.Username != "ARTEX" {
+	if req.Username != "Ripple" {
 		writeErr(w, 401, "Incorrect username or password")
 		return
 	}
@@ -289,7 +337,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "Incorrect username or password")
 		return
 	}
-	tok, err := signJWT(s.jwtKey)
+	tok, err := signJWT(s.signingKey())
 	if err != nil {
 		writeErr(w, 500, "Failed to generate token")
 		return

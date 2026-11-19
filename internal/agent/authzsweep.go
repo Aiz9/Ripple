@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -123,18 +123,20 @@ func (t *ToolSet) mobileAuthzSweep() actool.CoreTool {
 			unauth := a.AlsoUnauth == nil || *a.AlsoUnauth
 
 			type epResult struct {
-				Method     string           `json:"method"`
-				URL        string           `json:"url"`
-				OwnerRole  string           `json:"owner_role,omitempty"`
-				Candidates []authzCandidate `json:"candidates"`
-				Verdict    string           `json:"verdict"`
-				Finding    *findingBlock    `json:"finding,omitempty"`
+				Method     string            `json:"method"`
+				URL        string            `json:"url"`
+				OwnerRole  string            `json:"owner_role,omitempty"`
+				Candidates []authzCandidate  `json:"candidates"`
+				Verdict    string            `json:"verdict"`
+				Access     map[string]string `json:"role_access,omitempty"` // role -> owner|accessible|denied|maybe
+				Finding    *findingBlock     `json:"finding,omitempty"`
 			}
 			var results []epResult
 			vulnCount := 0
 			filed := 0
 			for _, owner := range owners {
 				method, canon, _ := exchangeEndpoint(owner)
+				recordCoverage(t.taskID, method+" "+pathOf(canon), "authz")
 				ownerStatus := httpStatus(owner.Response)
 				ownerBody := httpBody(owner.Response)
 				ownerIDs := resourceIDs(owner.Request)
@@ -164,6 +166,22 @@ func (t *ToolSet) mobileAuthzSweep() actool.CoreTool {
 					}
 				}
 				t.applyAuthzExpectations(method, pathOf(canon), ep.Candidates)
+				// Build the role×function access row (BFLA matrix).
+				ep.Access = map[string]string{}
+				if ep.OwnerRole != "" {
+					ep.Access[ep.OwnerRole] = "owner"
+				}
+				for _, cand := range ep.Candidates {
+					role := strings.TrimPrefix(cand.Principal, "role:")
+					switch cand.Verdict {
+					case authzVulnerable:
+						ep.Access[role] = "accessible"
+					case authzNotVulnerable:
+						ep.Access[role] = "denied"
+					default:
+						ep.Access[role] = "maybe"
+					}
+				}
 				for _, cand := range ep.Candidates {
 					if cand.Verdict == authzVulnerable {
 						ep.Verdict = authzVulnerable
@@ -194,6 +212,7 @@ func (t *ToolSet) mobileAuthzSweep() actool.CoreTool {
 				"identities":        len(ids),
 				"vulnerable":        vulnCount,
 				"findings_filed":    filed,
+				"ownership_map":     ownershipMap(t.taskID),
 				"exchanges_scanned": len(hist),
 				"results":           results,
 			})

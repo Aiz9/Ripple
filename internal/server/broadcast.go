@@ -3,7 +3,7 @@ package server
 import (
 	"sync"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 )
 
 // Broadcaster is a per-task in-process pub/sub for live activity events. The

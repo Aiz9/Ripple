@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/mobiletest"
+	"github.com/Aiz9/ripple/internal/mobiletest"
 )
 
 // inspectProfile reads bounded prefixes without extracting or executing APK code.

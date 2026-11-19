@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -42,26 +43,69 @@ func BurpMCPURL() string {
 	return "http://127.0.0.1:9876"
 }
 
-// ToolNames lists the MCP tools the server exposes (used to confirm a live, correctly
-// configured Burp MCP connection).
-func (c *BurpMCP) ToolNames(ctx context.Context) ([]string, error) {
+// burpToolContract is the wire contract this client depends on: each Burp MCP tool
+// we invoke and the argument keys we send it (see SendRequest / ProxyHistory).
+// CheckBurpMCP validates the live server's advertised schema against this, so a
+// future PortSwigger argument rename surfaces as one clear capture-status error
+// up front — instead of every replay failing with an opaque kotlinx "unknown key"
+// that workers misread as an environment fault and give up on the tools.
+var burpToolContract = map[string][]string{
+	"get_proxy_http_history": {"count", "offset"},
+	"send_http1_request":     {"content", "targetHostname", "targetPort", "usesHttps"},
+}
+
+// toolSchemas fetches each exposed tool's name and the property names of its input
+// schema (empty set when the server advertises no schema for a tool).
+func (c *BurpMCP) toolSchemas(ctx context.Context) (map[string]map[string]bool, error) {
 	res, err := c.rpc(ctx, "tools/list", map[string]any{})
 	if err != nil {
 		return nil, err
 	}
 	var payload struct {
 		Tools []struct {
-			Name string `json:"name"`
+			Name        string `json:"name"`
+			InputSchema struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+			} `json:"inputSchema"`
 		} `json:"tools"`
 	}
 	if err := json.Unmarshal(res, &payload); err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(payload.Tools))
+	out := make(map[string]map[string]bool, len(payload.Tools))
 	for _, t := range payload.Tools {
-		names = append(names, t.Name)
+		props := make(map[string]bool, len(t.InputSchema.Properties))
+		for k := range t.InputSchema.Properties {
+			props[k] = true
+		}
+		out[t.Name] = props
 	}
-	return names, nil
+	return out, nil
+}
+
+// contractProblems checks the live schema against burpToolContract and returns a
+// sorted list of mismatches (empty when the contract holds). A tool that advertises
+// no properties is only checked for existence, not arg names, so a server that omits
+// schemas degrades to the previous presence check rather than failing spuriously.
+func contractProblems(schemas map[string]map[string]bool) []string {
+	var problems []string
+	for tool, keys := range burpToolContract {
+		props, present := schemas[tool]
+		if !present {
+			problems = append(problems, tool+" missing")
+			continue
+		}
+		if len(props) == 0 {
+			continue // server advertises no schema for this tool; can't validate args
+		}
+		for _, k := range keys {
+			if !props[k] {
+				problems = append(problems, fmt.Sprintf("%s lacks arg %q", tool, k))
+			}
+		}
+	}
+	sort.Strings(problems)
+	return problems
 }
 
 // CheckBurpMCP verifies the Burp MCP integration end to end: it connects to the
@@ -79,19 +123,12 @@ func CheckBurpMCPAt(ctx context.Context, url string) (ok bool, detail string) {
 		return false, fmt.Sprintf("Burp MCP not reachable at %s: %v (is Burp running with the MCP Server extension enabled?)", url, err)
 	}
 	defer c.Close()
-	names, err := c.ToolNames(ctx)
+	schemas, err := c.toolSchemas(ctx)
 	if err != nil {
 		return false, fmt.Sprintf("Burp MCP at %s connected but tools/list failed: %v", url, err)
 	}
-	hasHistory := false
-	for _, n := range names {
-		if n == "get_proxy_http_history" {
-			hasHistory = true
-			break
-		}
+	if problems := contractProblems(schemas); len(problems) > 0 {
+		return false, fmt.Sprintf("Burp MCP at %s is up (%d tools) but its schema does not match what this client sends (%s) — update Burp's MCP Server extension (or this client); history/replay will fail until it matches", url, len(schemas), strings.Join(problems, "; "))
 	}
-	if !hasHistory {
-		return false, fmt.Sprintf("Burp MCP at %s is up (%d tools) but get_proxy_http_history is missing; update the MCP extension", url, len(names))
-	}
-	return true, fmt.Sprintf("Burp MCP ready at %s: %d tools, proxy history available", url, len(names))
+	return true, fmt.Sprintf("Burp MCP ready at %s: %d tools, history + replay schema verified", url, len(schemas))
 }

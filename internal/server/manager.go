@@ -14,12 +14,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/agent"
-	pgdb "github.com/Autumn-27/artex/internal/db"
-	"github.com/Autumn-27/artex/internal/enrich"
-	"github.com/Autumn-27/artex/internal/guard"
-	"github.com/Autumn-27/artex/internal/intercept"
-	"github.com/Autumn-27/artex/internal/traffic"
+	"github.com/Aiz9/ripple/internal/agent"
+	pgdb "github.com/Aiz9/ripple/internal/db"
+	"github.com/Aiz9/ripple/internal/enrich"
+	"github.com/Aiz9/ripple/internal/guard"
+	"github.com/Aiz9/ripple/internal/intercept"
+	"github.com/Aiz9/ripple/internal/traffic"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -234,7 +234,7 @@ type Manager struct {
 	trafficOn   bool // Traffic capture switch, default off, settings.traffic_capture.
 	llmRecOn    bool // LLM recording switch, default off, settings.llm_record.
 	// Web search settings default off; brave-free needs braveKey, tavily needs tavilyKey.
-	// webSearchProxy is separate http/https/socks5 egress, unrelated to recording MITM.
+	// webSearchProxy is separate http/https/socks5 egress, unrelated to the recording proxy.
 	webSearchOn      bool
 	webSearchBackend string
 	braveKey         string
@@ -242,7 +242,7 @@ type Manager struct {
 	webSearchProxy   string
 	// globalProxy is the egress proxy all target traffic routes through
 	// (http/https/socks5, optional user:pass). Empty = direct. When traffic
-	// capture is on it becomes the MITM's upstream; when capture is off it is
+	// capture is on it becomes the recording proxy's upstream; when capture is off it is
 	// injected into agent bash env / WebFetch directly. See ProxyAddr.
 	globalProxy string
 }
@@ -350,7 +350,7 @@ func (m *Manager) Enrich() *enrich.Engine { return m.enrich }
 // traffic-recording proxy. PostgreSQL is required (it is the single data source).
 func NewManager(dir, proxyAddr string) (*Manager, error) {
 	// Resolve the data dir to an ABSOLUTE path up front. Every data path derives
-	// from it — notably the MITM CA cert, whose path is injected into worker shells
+	// from it — notably the recording proxy's CA cert, whose path is injected into worker shells
 	// (SSL_CERT_FILE/CURL_CA_BUNDLE) and read by WebFetch. A relative path (the
 	// default is "./data" under `go run`) only resolves when the current working
 	// directory happens to match, so curl/WebFetch in a different CWD fail to load
@@ -406,12 +406,8 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 		}
 		if tr != nil {
 			m.traffic = tr
-			go func() {
-				log.Printf("[traffic] recording proxy on %s (set HTTP_PROXY=%s + trust _ca CA)", proxyAddr, tr.ProxyAddr())
-				if err := tr.Start(); err != nil {
-					log.Printf("[traffic] proxy stopped: %v", err)
-				}
-			}()
+			log.Printf("[traffic] capture via Burp MCP; device and agents proxy through Burp directly")
+			go pollBurp(tr)
 		}
 	}
 	// Asset auto-completion engine (§5): HTTP probes routed through the recording
@@ -436,7 +432,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 		m.webSearchProxy = v
 	}
 	// Global egress proxy (default: direct). When capture is on, feed it to the
-	// MITM as its upstream so recorded traffic exits through it; when capture is
+	// recording proxy as its upstream so recorded traffic exits through it; when capture is
 	// off, ProxyAddr hands it to agents directly (bash env / WebFetch).
 	if v, ok, _ := pg.GetSetting(settingGlobalProxy); ok {
 		m.globalProxy = strings.TrimSpace(v)
@@ -471,7 +467,7 @@ func (m *Manager) SetTrafficEnabled(on bool) error {
 	m.trafficOn = on
 	m.mu.Unlock()
 	// Inject (on) or strip (off) the recording proxy + CA on the browser MCP so
-	// Playwright routes through the MITM. Must run after the flag flip above, since
+	// Playwright routes through the recording proxy. Must run after the flag flip above, since
 	// ProxyAddr/ProxyCACert honor it. putSettings rebuilds agents next (applyLLM),
 	// which re-spawns the MCP with the new args/env.
 	m.syncBrowserMCPProxy()
@@ -641,7 +637,7 @@ const browserMCPName = "browser"
 
 // syncBrowserMCPProxy reconciles the seeded browser MCP's proxy args + CA env with
 // the current traffic-capture state: capture on → route Playwright through the
-// recording proxy (--proxy-server) and trust its MITM CA (NODE_EXTRA_CA_CERTS);
+// recording proxy (--proxy-server) and trust its CA (NODE_EXTRA_CA_CERTS);
 // capture off → strip both. Idempotent, and a no-op if the user deleted/renamed the
 // MCP. Must be called WITHOUT m.mu held (ProxyAddr/ProxyCACert take the lock).
 func (m *Manager) syncBrowserMCPProxy() {
@@ -746,12 +742,12 @@ func (m *Manager) PG() *pgdb.DB              { return m.pg }
 func (m *Manager) Traffic() *traffic.Traffic { return m.traffic }
 
 // ProxyAddr returns the egress proxy address agents route target traffic through:
-//   - capture ON  → the recording MITM proxy (which itself exits via the global
+//   - capture ON  → the recording proxy (which itself exits via the global
 //     proxy when one is set); agents also get its CA (see ProxyCACert).
 //   - capture OFF → the global egress proxy directly (empty CA — real target
 //     certs), or "" when no global proxy is set (direct, no recording).
 //
-// So the global proxy takes effect in both modes: at the MITM's upstream when
+// So the global proxy takes effect in both modes: at the recording proxy's upstream when
 // capturing, in the agent's own bash env / WebFetch when not.
 func (m *Manager) ProxyAddr() string {
 	if m.traffic != nil && m.TrafficEnabled() {
@@ -763,7 +759,7 @@ func (m *Manager) ProxyAddr() string {
 }
 
 // ProxyCACert returns the CA cert path agents must trust to verify HTTPS through
-// the egress proxy. Non-empty ONLY when traffic capture is on (the MITM re-signs
+// the egress proxy. Non-empty ONLY when traffic capture is on (Burp re-signs
 // certs): the global proxy used directly (capture off) is a plain forwarder that
 // preserves real target certs, so no custom CA is needed there. Its emptiness is
 // also the worker's "recording off" signal (see workerSystem).
@@ -782,7 +778,7 @@ func (m *Manager) GlobalProxy() string {
 }
 
 // SetGlobalProxy validates, persists and applies the global egress proxy
-// (http/https/socks5, optional user:pass; empty = direct). It updates the MITM's
+// (http/https/socks5, optional user:pass; empty = direct). It updates the recording proxy's
 // upstream immediately; callers must rebuild agents (applyLLM) afterwards so the
 // capture-off path (bash env / WebFetch) picks up the change too.
 func (m *Manager) SetGlobalProxy(raw string) error {

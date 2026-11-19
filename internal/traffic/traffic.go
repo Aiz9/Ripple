@@ -1,7 +1,8 @@
-// Package traffic implements the request-recording subsystem (docs §10): an
-// embedded go-mitmproxy proxy whose addon writes every target HTTP exchange into
-// a human-browsable file tree, with a sidecar SQLite index for paged queries.
-// Full capture, plaintext (no redaction), target HTTP only.
+// Package traffic implements the request-recording subsystem (docs §10): a SQLite
+// index + content-addressed blob store of HTTP exchanges, with paged queries and
+// full-text search. Capture is done by Burp (the single proxy); exchanges are fed
+// in through Ingest by the manager's Burp-MCP poller. Full capture, plaintext (no
+// redaction), target HTTP only.
 package traffic
 
 import (
@@ -17,7 +18,6 @@ import (
 	"io/fs"
 	"log"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -30,10 +30,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
-	mproxy "github.com/lqqyt2423/go-mitmproxy/proxy"
 	_ "modernc.org/sqlite"
 )
 
@@ -106,7 +105,7 @@ const (
 	autoVacuumIncremental = 2
 	// reclaimChunkPages bounds how much index space one locked step returns to the
 	// filesystem (pages are 4KiB, so ~32MB). Reclamation holds the write lock, and
-	// record() runs before go-mitmproxy replies to the client, so an unbounded
+	// record() runs on the Burp ingest path, so an unbounded
 	// pass would stall the very requests being recorded.
 	reclaimChunkPages = 8192
 	// reclaimMergePages bounds the full-text merge done alongside each chunk.
@@ -135,12 +134,11 @@ const TrafficSearchDescription = "Search traffic captured by the proxy (host is 
 
 // Traffic runs the recording proxy and owns the file tree + index.
 type Traffic struct {
-	dir   string
-	addr  string
-	db    *sql.DB
-	wmu   sync.Mutex // serializes record() vs DeleteHost (incl. blob GC)
-	seq   atomic.Int64
-	proxy *mproxy.Proxy
+	dir  string
+	addr string
+	db   *sql.DB
+	wmu  sync.Mutex // serializes record() vs DeleteHost (incl. blob GC)
+	seq  atomic.Int64
 	// fts reports whether the full-text index is available. False on a driver
 	// build without FTS5: recording and metadata search still work, body search
 	// degrades to unsupported rather than erroring.
@@ -161,17 +159,9 @@ type Traffic struct {
 	// stopping() treats as "not closing".
 	closed    chan struct{}
 	closeOnce sync.Once
-	// pass is the set of hosts whose MITM interception failed for a proxy/protocol
-	// reason; connections to them are tunneled transparently (fail-open) so the
-	// request still reaches the target — unrecorded — instead of being killed.
-	pass sync.Map // hostname(string) -> struct{}
-	// upstream is the global egress proxy every captured request is forwarded
-	// through (nil = dial targets directly). Both the intercepted and the
-	// transparent-passthrough paths honor it (go-mitmproxy's getUpstreamConn),
-	// so no host escapes it. Hot-swappable at runtime via SetUpstreamProxy.
-	upstream atomic.Pointer[url.URL]
-	// scopeHosts restricts proxy traffic forwarding and recording to matching hosts.
-	// Nil or empty means all hosts are permitted.
+	// scopeHosts records the configured engagement scope. Retained for callers that
+	// set it; traffic is captured by Burp now, so it is advisory metadata, not a
+	// forwarding gate.
 	scopeHosts atomic.Pointer[[]string]
 }
 
@@ -206,37 +196,8 @@ func Open(dir, addr string) (*Traffic, error) {
 		return nil, err
 	}
 
-	p, err := mproxy.NewProxy(&mproxy.Options{
-		Addr:        addr,
-		SslInsecure: true,
-		CaRootPath:  filepath.Join(dir, "_ca"),
-	})
-	if err != nil {
-		db.Close()
-		return nil, err
-	}
-	// Upstream selection. By default (no global egress proxy set) targets are
-	// dialed DIRECTLY: go-mitmproxy's own default upstream uses
-	// http.ProxyFromEnvironment, so an HTTP_PROXY/HTTPS_PROXY in the environment
-	// (a VPN/system proxy) would make it forward target requests through that
-	// external proxy — which can't reach the target → 502. Returning nil forces
-	// a direct dial. When a global egress proxy IS configured (SetUpstreamProxy),
-	// every captured request — intercepted AND transparently tunneled — is
-	// forwarded through it instead, so no host leaks the real source IP.
-	p.SetUpstreamProxy(func(*http.Request) (*url.URL, error) { return t.upstream.Load(), nil })
-	// Fail-open: MITM every host by default, EXCEPT ones a prior request proved we
-	// can't intercept without breaking (see maybePassthrough). Those are tunneled
-	// transparently so the request still reaches the target instead of being killed.
-	p.SetShouldInterceptRule(func(req *http.Request) bool {
-		host := hostOnly(req.Host)
-		if !t.isHostInScope(host) {
-			return true // intercept to block out-of-scope requests in Requestheaders
-		}
-		_, tunnel := t.pass.Load(host)
-		return !tunnel
-	})
-	p.AddAddon(&sink{t: t})
-	t.proxy = p
+	// Capture is done by Burp (the single proxy); exchanges arrive via Ingest and
+	// the manager's Burp-MCP poller.
 	return t, nil
 }
 
@@ -311,30 +272,13 @@ func hostOnly(hostport string) string {
 
 // ProxyAddr returns the address workers should set as HTTP(S)_PROXY. A bare
 // ":port" means "bind all interfaces" (legacy default), so map it to loopback.
-func (t *Traffic) ProxyAddr() string {
-	if strings.HasPrefix(t.addr, ":") {
-		return "http://127.0.0.1" + t.addr
-	}
-	return "http://" + t.addr
-}
+// ProxyAddr returns "" — there is no embedded proxy; the device and agents use
+// Burp directly.
+func (t *Traffic) ProxyAddr() string { return "" }
 
-// SetUpstreamProxy points every captured request at a global egress proxy
-// (http/https/socks5, optional user:pass in the URL). An empty raw string clears
-// it, restoring direct dialing. The change is atomic and takes effect on the next
-// connection — no restart, no proxy rebuild. go-mitmproxy dials all three schemes
-// itself, so socks5 works uniformly here regardless of the target tool.
-func (t *Traffic) SetUpstreamProxy(raw string) error {
-	if strings.TrimSpace(raw) == "" {
-		t.upstream.Store(nil)
-		return nil
-	}
-	u, err := ValidateProxyURL(raw)
-	if err != nil {
-		return err
-	}
-	t.upstream.Store(u)
-	return nil
-}
+// SetUpstreamProxy is retained for callers but is a no-op: egress is Burp's
+// responsibility now, not an embedded-proxy upstream.
+func (t *Traffic) SetUpstreamProxy(raw string) error { return nil }
 
 // SetScopeHosts restricts proxy traffic forwarding and recording to the given
 // hosts. An empty slice clears the filter, allowing all hosts.
@@ -351,32 +295,6 @@ func (t *Traffic) SetScopeHosts(hosts []string) {
 		}
 	}
 	t.scopeHosts.Store(&filtered)
-}
-
-func (t *Traffic) isHostInScope(host string) bool {
-	hostsPtr := t.scopeHosts.Load()
-	if hostsPtr == nil || len(*hostsPtr) == 0 {
-		return true
-	}
-	host = strings.ToLower(strings.TrimSpace(hostOnly(host)))
-	if host == "" {
-		return false
-	}
-	for _, pattern := range *hostsPtr {
-		if pattern == "*" || pattern == host {
-			return true
-		}
-		if strings.HasPrefix(pattern, "*.") {
-			domain := strings.TrimPrefix(pattern, "*.")
-			if host == domain || strings.HasSuffix(host, "."+domain) {
-				return true
-			}
-		}
-		if matched, _ := filepath.Match(pattern, host); matched {
-			return true
-		}
-	}
-	return false
 }
 
 // ValidateProxyURL parses and checks a proxy URL (http/https/socks5, optional
@@ -401,14 +319,13 @@ func ValidateProxyURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// CACertPath returns the PEM CA cert clients must trust to verify HTTPS through
-// the MITM proxy (go-mitmproxy writes it here on first start).
-func (t *Traffic) CACertPath() string {
-	return filepath.Join(t.dir, "_ca", "mitmproxy-ca-cert.pem")
-}
+// CACertPath returns "" — there is no embedded CA; HTTPS is intercepted by
+// Burp, whose CA is installed on the device out of band.
+func (t *Traffic) CACertPath() string { return "" }
 
-// Start runs the proxy (blocking); run in a goroutine.
-func (t *Traffic) Start() error { return t.proxy.Start() }
+// Start is a no-op: there is no embedded proxy to run. Capture arrives via the
+// manager's Burp-MCP poller calling Ingest.
+func (t *Traffic) Start() error { return nil }
 
 // Close waits for background tree reclamation to finish before closing the
 // index, so shutdown never leaves a goroutine unlinking files out from under a
@@ -423,6 +340,10 @@ func (t *Traffic) Close() error {
 	return t.db.Close()
 }
 
+// Done returns a channel closed when the store is Closed, so background feeders
+// (the Burp-MCP poller) can stop.
+func (t *Traffic) Done() <-chan struct{} { return t.closed }
+
 // stopping reports whether Close has been called. A nil channel (the zero value)
 // is never ready, so this reads as "not closing" without a separate guard.
 func (t *Traffic) stopping() bool {
@@ -435,126 +356,44 @@ func (t *Traffic) stopping() bool {
 }
 func (t *Traffic) DB() *sql.DB { return t.db }
 
-// sink is the go-mitmproxy addon that records completed exchanges.
-type sink struct {
-	mproxy.BaseAddon
-	t *Traffic
-}
-
-func (s *sink) ClientConnected(conn *mproxy.ClientConn) {
-	conn.UpstreamCert = false
-}
-
-func (s *sink) Requestheaders(f *mproxy.Flow) {
-	if f.Request == nil {
-		return
-	}
-	host := ""
-	if f.Request.URL != nil {
-		host = hostOnly(f.Request.URL.Host)
-	}
-	if host == "" && f.Request.Header != nil {
-		host = hostOnly(f.Request.Header.Get("Host"))
-	}
-	if !s.t.isHostInScope(host) {
-		f.Response = &mproxy.Response{
-			StatusCode: http.StatusForbidden,
-			Header: http.Header{
-				"Content-Type":  []string{"text/plain; charset=utf-8"},
-				"X-Artex-Scope": []string{"blocked: out-of-scope host"},
-			},
-			Body: []byte("403 Forbidden - host not in scope\n"),
-		}
-		s.t.record(f)
-	}
-}
-
-func (s *sink) Response(f *mproxy.Flow) {
-	if f.Request == nil || f.Response == nil {
-		return
-	}
-	if f.Response.Header.Get("X-Artex-Scope") != "" {
-		return
-	}
-	s.t.record(f)
-}
-
-// RequestError fires when a request through an established MITM tunnel fails. If
-// the failure looks proxy/protocol-caused (h2 quirks, HEAD-with-body, protocol
-// errors) — not a plain target-unreachable error — we flag the host for
-// transparent passthrough so future requests to it succeed instead of dying.
-func (s *sink) RequestError(f *mproxy.Flow, err error) { s.t.maybePassthrough(f, err) }
-
-// maybePassthrough marks a host to be tunneled transparently on the next
-// connection, but only for errors the proxy itself caused — a target that is
-// simply down/filtered would fail without us too, and must stay MITM'd+recorded.
-func (t *Traffic) maybePassthrough(f *mproxy.Flow, err error) {
-	if err == nil || f == nil || f.Request == nil || f.Request.URL == nil || !proxyCausedErr(err) {
-		return
-	}
-	host := f.Request.URL.Hostname()
-	if host == "" {
-		return
-	}
-	if _, loaded := t.pass.LoadOrStore(host, struct{}{}); !loaded {
-		log.Printf("[traffic] MITM failed for %s; using passthrough (future requests to this host connect directly without recording): %v", host, err)
-	}
-}
-
-// proxyCausedErr reports whether err indicates the interception layer (not the
-// target) is at fault — HTTP/2 handling, HEAD-with-body, or a protocol violation.
-func proxyCausedErr(err error) bool {
-	s := strings.ToLower(err.Error())
-	for _, p := range []string{"head request", "http2", "http/2", "protocol error", "protocol_error", "malformed"} {
-		if strings.Contains(s, p) {
-			return true
-		}
-	}
-	return false
+// exchange is one captured HTTP transaction in a capture-source-neutral form, fed
+// to record() by the Burp-MCP ingest (see burp_ingest.go).
+type exchange struct {
+	host, method, url, reqURI, proto string
+	escapedPath, contentType         string
+	status                           int
+	reqHeaderLines, respHeaderLines  string
+	reqContentType                   string
+	reqBody, respBody                []byte
 }
 
 // record persists one exchange entirely in SQLite: metadata, bodies and the
 // full-text index. Nothing is written to a per-request directory — only bodies
 // above maxInlineBody spill to the content-addressed blob store.
-func (t *Traffic) record(f *mproxy.Flow) {
-	if f == nil || f.Request == nil || f.Response == nil {
+func (t *Traffic) record(ex exchange) {
+	if ex.url == "" {
 		return
 	}
 	// The write lock covers blob + index writes, so DeleteHost (and its blob GC)
 	// can run under the same lock without racing a concurrent record.
 	t.wmu.Lock()
 	defer t.wmu.Unlock()
-	host := ""
-	if f.Request.URL != nil {
-		host = f.Request.URL.Hostname()
-	}
-	if host == "" && f.Request.Header != nil {
-		host = hostOnly(f.Request.Header.Get("Host"))
-	}
-	method := f.Request.Method
-	var escapedPath, url, reqURI, proto string
-	if f.Request.URL != nil {
-		escapedPath = f.Request.URL.EscapedPath()
-		url = f.Request.URL.String()
-		reqURI = f.Request.URL.RequestURI()
-		proto = f.Request.Proto
-	} else {
-		url = "http://" + host
-		reqURI = "/"
-		proto = "HTTP/1.1"
-	}
-	tmpl := db.TemplatePath(escapedPath)
+	host, method, url := ex.host, ex.method, ex.url
+	tmpl := db.TemplatePath(ex.escapedPath)
 	n := t.seq.Add(1)
 	now := time.Now()
-	id := fmt.Sprintf("%d-%04d", now.Unix(), n%10000)
+	// seq is zero-padded (not wrapped) so the id stays unique and the "id DESC"
+	// pagination tiebreak stays lexicographically ordered; wrapping at 10000 could
+	// collide within one second and silently replace a different exchange.
+	id := fmt.Sprintf("%d-%012d", now.Unix(), n)
 
-	ct := f.Response.Header.Get("Content-Type")
-	reqHead := fmt.Sprintf("%s %s %s\n%s", method, reqURI, proto, requestHeaderLines(f.Request))
-	respHead := fmt.Sprintf("HTTP %d\n%s", f.Response.StatusCode, headerLines(f.Response.Header))
+	ct := ex.contentType
+	reqHead := fmt.Sprintf("%s %s %s\n%s", method, ex.reqURI, ex.proto, ex.reqHeaderLines)
+	respHead := fmt.Sprintf("HTTP %d\n%s", ex.status, ex.respHeaderLines)
 	// Bodies are spilled before the transaction opens: blob writes are filesystem
 	// work and must not sit inside the SQLite write lock.
-	reqB := t.spill(f.Request.Body, f.Request.Header.Get("Content-Type"))
-	respB := t.spill(f.Response.Body, ct)
+	reqB := t.spill(ex.reqBody, ex.reqContentType)
+	respB := t.spill(ex.respBody, ct)
 
 	tx, err := t.db.Begin()
 	if err != nil {
@@ -567,8 +406,8 @@ func (t *Traffic) record(f *mproxy.Flow) {
 	// row whose bodies still live in the old on-disk tree (see Get).
 	res, err := tx.Exec(`INSERT OR REPLACE INTO exchanges(id,ts,host,method,url_template,url,status,content_type,req_len,resp_len,path)
 VALUES(?,?,?,?,?,?,?,?,?,?,'')`,
-		id, now.Unix(), host, method, tmpl, url, f.Response.StatusCode, ct,
-		len(f.Request.Body), len(f.Response.Body))
+		id, now.Unix(), host, method, tmpl, url, ex.status, ct,
+		len(ex.reqBody), len(ex.respBody))
 	if err != nil {
 		log.Printf("[traffic] failed to record %s (write index): %v", url, err)
 		return
@@ -734,39 +573,6 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
-}
-
-func headerLines(h map[string][]string) string {
-	var b strings.Builder
-	for k, vs := range h {
-		for _, v := range vs {
-			b.WriteString(k)
-			b.WriteString(": ")
-			b.WriteString(v)
-			b.WriteByte('\n')
-		}
-	}
-	return b.String()
-}
-
-// requestHeaderLines restores the HTTP Host header, which net/http stores on
-// Request.Host rather than in Header. Keeping it in request.http makes the raw
-// capture complete and directly replayable.
-func requestHeaderLines(req *mproxy.Request) string {
-	headers := req.Header.Clone()
-	headers.Del("Host")
-	host := req.URL.Host
-	if raw := req.Raw(); raw != nil && strings.TrimSpace(raw.Host) != "" {
-		host = raw.Host
-	}
-	var b strings.Builder
-	if host = strings.TrimSpace(host); host != "" {
-		b.WriteString("Host: ")
-		b.WriteString(host)
-		b.WriteByte('\n')
-	}
-	b.WriteString(headerLines(headers))
-	return b.String()
 }
 
 func sanitize(s string) string {
@@ -1797,8 +1603,8 @@ func (t *Traffic) indexBytes() int64 {
 //
 // The work is done in the background, in bounded steps that drop the write lock
 // between them, because it is proportional to what was deleted — freeing several
-// gigabytes under one lock would stall record(), which go-mitmproxy calls before
-// it replies to the client, and so would stall the requests being recorded.
+// gigabytes under one lock would stall record(), which runs on the Burp ingest
+// path, and so would stall the requests being recorded.
 // Safe to call with wmu held: the background pass simply waits for it.
 //
 // Best-effort throughout. Failing to reclaim costs disk space, never

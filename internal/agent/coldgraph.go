@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 )
 
 // cgNode is the minimal node view the cold-graph algorithms need.

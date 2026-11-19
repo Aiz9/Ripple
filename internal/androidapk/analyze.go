@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/mobiletest"
+	"github.com/Aiz9/ripple/internal/mobiletest"
 )
 
 type Component struct {

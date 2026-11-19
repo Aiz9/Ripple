@@ -400,7 +400,7 @@
       "root_approval",
       "reverse_engineering"
     ],
-    "procedure": "Enumerate the app's runtime endpoints EXHAUSTIVELY in two authentication states. BEFORE login: launch the app and run mobile_discover_runtime_apis + mobile_traffic_history to capture startup/login-screen requests (unauthenticated surface). Log in reliably (verify the authenticated screen via mobile_ui_dump; retry on failure), then AFTER login drive every major flow and re-capture (authenticated surface). Merge both with the statically extracted URLs into one endpoint inventory tagged by source and auth-state; run mobile_api_harvest to normalize the captured traffic into deduped, parameterized endpoints (object ids collapsed to {id}) with their params and auth requirement in the inventory, and mobile_api_graph to map objects and producer->consumer id dependencies (endpoints that consume externally-produced ids are prime BOLA targets). If an OpenAPI/Swagger spec is recovered (api-docs/swagger.json in the app or backend), run mobile_openapi_ingest to add the documented (inferred) endpoints and diff them against the observed inventory — documented-but-unobserved endpoints to exercise, observed-but-undocumented ones are shadow APIs. This feeds the OWASP/business-logic testing phases. Mark blocked (not failed) when the device lacks root."
+    "procedure": "Enumerate the app's runtime endpoints EXHAUSTIVELY in two authentication states. BEFORE login: launch the app and run mobile_discover_runtime_apis + mobile_traffic_history to capture startup/login-screen requests (unauthenticated surface). Log in reliably (verify the authenticated screen via mobile_ui_dump; retry on failure), then AFTER login drive every major flow and re-capture (authenticated surface). Merge both with the statically extracted URLs into one endpoint inventory tagged by source and auth-state; run mobile_api_harvest to normalize the captured traffic into deduped, parameterized endpoints (object ids collapsed to {id}) with their params and auth requirement in the inventory, and mobile_api_graph to map objects and producer->consumer id dependencies (endpoints that consume externally-produced ids are prime BOLA targets). If an OpenAPI/Swagger spec is recovered (api-docs/swagger.json in the app or backend), run mobile_openapi_ingest to add the documented (inferred) endpoints and diff them against the observed inventory — documented-but-unobserved endpoints to exercise, observed-but-undocumented ones are shadow APIs. The static inventory lists host-less endpoint PATH templates (from Retrofit/OkHttp code) separately from base URLs; the app often resolves a DIFFERENT base URL at runtime, so take the base URL seen in proxy traffic as authoritative, JOIN the static path templates to it, and actively trigger (drive the app / replay) any path that never appears in traffic (code-declared but unobserved = shadow/untested). Run mobile_api_model to infer parameter and response TYPES, the API version and a discovery confidence per endpoint, and mobile_coverage to see which checks have run on each endpoint and which remain untested. This feeds the OWASP/business-logic testing phases. Mark blocked (not failed) when the device lacks root."
   },
   {
     "id": "dynamic.repackage",
@@ -630,6 +630,26 @@
     "procedure": "Use two controlled owners and role-separated accounts; compare authorized/unauthorized responses and server-side effects on seeded objects. Register the owners/roles with mobile_identity_set, then run mobile_authz_sweep (or mobile_authz_diff for a single case) to decide each deterministically: it replays the owner's request as every other identity and unauthenticated and flags only actual disclosure or mutation, never a bare 2xx. Declare legitimately-shared/admin-accessible endpoints with mobile_authz_expect so expected access is not reported. Confirmed results auto-file as findings."
   },
   {
+    "id": "network.token_audience",
+    "section": "05 Network and backend API security",
+    "title": "Cross-audience token acceptance and legacy API-family coverage",
+    "objective": "authorization",
+    "layer": "backend",
+    "masvs": [
+      "MASVS-AUTH-1"
+    ],
+    "cwe": [
+      "CWE-863",
+      "CWE-287"
+    ],
+    "signals": [],
+    "requires": [
+      "test_accounts",
+      "backend_scope"
+    ],
+    "procedure": "Enumerate every login/token-minting path the app or backend exposes (app login, convergent/third-party, SSO, account-link) and every API version family in the endpoint inventory (legacy v1/basic-token AND v2/JWT), not just the routes the app itself calls. Mint a token from EACH login path and replay it across v1 and v2 of every state-changing and read endpoint — especially payment/transfer/QR routes. A token minted for one audience/channel accepted on another (e.g. a CONVERGENT or third-party token on a fund-transfer or QR-payment route) is a critical authorization-boundary bypass. Record coverage for every enumerated endpoint family at least once; never conclude token-bound means safe from same-audience A-vs-B swaps alone."
+  },
+  {
     "id": "network.validation",
     "section": "05 Network and backend API security",
     "title": "Injection, mass assignment and excessive data",
@@ -646,7 +666,7 @@
       "test_accounts",
       "documented_workflow"
     ],
-    "procedure": "Use documented schemas and seeded objects for bounded validation tests; verify actual impact rather than treating reflected input as injection. Run mobile_schema_fuzz on a captured JSON request to mutate each field against its type (wrong type, null, removal, oversized) and flag 5xx server errors (input reaching an unhandled path); a clean 4xx is correct rejection. Run mobile_mass_assignment on create/update requests to inject privilege fields the request omitted (role, is_admin, verified, balance, status); a finding only when the response shows the injected value was applied. Run mobile_inject_probe on request parameters to confirm SSTI (evaluated-expression product in the response) and error-based SQLi (leaked DB error signature) — confirmed by evidence, not status."
+    "procedure": "Use documented schemas and seeded objects for bounded validation tests; verify actual impact rather than treating reflected input as injection. Run mobile_schema_fuzz on a captured JSON request to mutate each field against its type (wrong type, null, removal, oversized) and flag 5xx server errors (input reaching an unhandled path); a clean 4xx is correct rejection. Run mobile_mass_assignment on create/update requests to inject privilege fields the request omitted (role, is_admin, verified, balance, status); a finding only when the response shows the injected value was applied. Run mobile_inject_probe on request parameters to confirm SSTI (evaluated-expression product in the response) and error-based SQLi (leaked DB error signature) — confirmed by evidence, not status. Run mobile_data_exposure to scan responses for sensitive fields/values a client should not receive (secrets, full PANs, SSNs, JWTs, keys). Run mobile_misconfig_probe to check CORS (reflected/credentialed arbitrary Origin) and missing security headers. For GraphQL endpoints, run mobile_graphql_probe to confirm schema introspection is enabled in production. These tools handle JSON and form-urlencoded bodies."
   },
   {
     "id": "network.rate",
@@ -743,7 +763,7 @@
       "otp",
       "transaction_approval"
     ],
-    "procedure": "Use the approved test OTP mechanism for expiry, replay, bounded retries and transaction binding; assess SMS leakage separately."
+    "procedure": "Use the approved test OTP mechanism for expiry, replay, bounded retries and transaction binding; assess SMS leakage separately. Run mobile_ratelimit_probe against the OTP-verify (and login/reset) request to confirm the server throttles/locks out brute force; no throttle across many attempts is a finding."
   },
   {
     "id": "auth.tokens",
@@ -765,7 +785,7 @@
       "test_accounts",
       "documented_workflow"
     ],
-    "procedure": "Compare storage and replay behavior before/after expiry, refresh, logout and account switch using test sessions. If sessions use JWTs, run mobile_jwt_probe: it decodes the token (alg:none, missing/expired/over-long exp, HS/RS confusion) and actively replays an alg:none and a tampered-signature variant — a forged token accepted while the genuine one is accepted confirms a signature-verification bypass (auto-filed critical)."
+    "procedure": "Compare storage and replay behavior before/after expiry, refresh, logout and account switch using test sessions. If sessions use JWTs, run mobile_jwt_probe: it decodes the token (alg:none, missing/expired/over-long exp, HS/RS confusion) and actively replays an alg:none and a tampered-signature variant — a forged token accepted while the genuine one is accepted confirms a signature-verification bypass (auto-filed critical). After logging out (or rotating the token), run mobile_session_probe on a pre-logout authenticated request to confirm the old token is actually invalidated server-side; a still-valid token is a session-management finding."
   },
   {
     "id": "auth.sessions",
@@ -1423,7 +1443,7 @@
       "documented_workflow",
       "transaction_approval"
     ],
-    "procedure": "Resubmit one approved test transaction and confirm ledger/idempotency effects without real fund movement. Use mobile_txn_probe with the request's idempotency field (plus amount/limit/currency invariants) to resubmit deterministically; it flags only when the server accepts a duplicate or invariant-breaking request, and distinguishes a correctly idempotent already-processed response. For concurrency/TOCTOU (double-spend, limit bypass, coupon stacking), run mobile_race_probe to fire K identical copies in parallel; a finding only when more acceptances than legitimate occur."
+    "procedure": "Resubmit one approved test transaction and confirm ledger/idempotency effects without real fund movement. Use mobile_txn_probe with the request's idempotency field (plus amount/limit/currency invariants) to resubmit deterministically; it flags only when the server accepts a duplicate or invariant-breaking request, and distinguishes a correctly idempotent already-processed response. For concurrency/TOCTOU (double-spend, limit bypass, coupon stacking), run mobile_race_probe to fire K identical copies in parallel; a finding only when more acceptances than legitimate occur. Verify ledger integrity out-of-band with mobile_balance_check: read the balance, perform the transaction, read it again — an accepted transfer must debit exactly the amount, and a rejected one must leave the balance unchanged."
   },
   {
     "id": "business.races",

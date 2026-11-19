@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 )
 
 // LogLine is one captured backend log entry exposed by the /api/logs endpoints.
@@ -80,7 +80,7 @@ func (s *logSinkT) SetDB(ctx context.Context, pg *db.DB) {
 				restored = append(restored, LogLine{
 					Seq:   s.seq,
 					DBID:  l.ID,
-					TS:    l.CreatedAt.Format(time.RFC3339),
+					TS:    l.CreatedAt.UTC().Format(time.RFC3339),
 					Level: l.Level,
 					Tag:   l.Tag,
 					Text:  l.Text,
@@ -119,7 +119,7 @@ func (s *logSinkT) SetDB(ctx context.Context, pg *db.DB) {
 					}
 					id, err := pg.InsertLog(req.ll.Level, req.ll.Tag, req.ll.Text)
 					if err != nil {
-						s.addLocal(LogLine{TS: time.Now().Format(time.RFC3339), Level: "error", Tag: "logs", Text: "[logs] ERROR database log persistence failed; local journal remains available. Underlying error: " + err.Error()})
+						s.addLocal(LogLine{TS: time.Now().UTC().Format(time.RFC3339), Level: "error", Tag: "logs", Text: "[logs] ERROR database log persistence failed; local journal remains available. Underlying error: " + err.Error()})
 						continue
 					}
 					// Stamp DBID back into the ring entry so history pagination works.
@@ -160,7 +160,7 @@ func (s *logSinkT) addLine(l LogLine, persist bool) {
 	s.seq++
 	l.Seq = s.seq
 	if l.TS == "" {
-		l.TS = time.Now().Format(time.RFC3339)
+		l.TS = time.Now().UTC().Format(time.RFC3339)
 	}
 	if s.journal != nil {
 		data, err := json.Marshal(l)
@@ -245,7 +245,7 @@ func parseLog(line string) LogLine {
 			tag = msg[1:i]
 		}
 	}
-	return LogLine{TS: time.Now().Format(time.RFC3339), Level: levelOf(msg), Tag: tag, Text: msg}
+	return LogLine{TS: time.Now().UTC().Format(time.RFC3339), Level: levelOf(msg), Tag: tag, Text: msg}
 }
 
 func levelOf(msg string) string {

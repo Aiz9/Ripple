@@ -357,6 +357,25 @@ export function ApprovalDetail({
               </CollapsibleContent>
             </Collapsible>
           ) : null}
+          {detail?.referenced_scripts?.length ? (
+            <Collapsible defaultOpen>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <ChevronDownIcon data-icon="inline-start" />
+                  Script contents ({detail.referenced_scripts.length})
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="flex flex-col gap-2 pt-2">
+                {detail.referenced_scripts.map((s) => (
+                  <CodeBlock
+                    key={s.path}
+                    label={`${s.path}${s.truncated ? " (truncated)" : ""}${s.error ? ` — ${s.error}` : ""}`}
+                    text={s.content || s.error || ""}
+                  />
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          ) : null}
           <p className="text-muted-foreground text-xs">
             Execution result: <span className="text-foreground">{detail ? execution : "Loading…"}</span>
           </p>

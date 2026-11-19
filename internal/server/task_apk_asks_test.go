@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Autumn-27/artex/internal/androidapk"
+	"github.com/Aiz9/ripple/internal/androidapk"
 )
 
 // TestAPKTaskDescriptionTriggersAllAsks verifies that the description the New APK
@@ -33,7 +33,7 @@ func TestAPKTaskDescriptionTriggersAllAsks(t *testing.T) {
 		"mobile_identity_set",
 		"BOLA / IDOR (API1)",
 		"BUSINESS LOGIC",
-		"STATIC ENDPOINT INVENTORY",
+		"STATIC API INVENTORY",
 		"https://api.example.com/v1/login",
 	} {
 		if !strings.Contains(d, want) {

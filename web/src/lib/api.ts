@@ -125,13 +125,29 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   } catch (error) {
-    if (!path.startsWith("/logs")) reportClientError("network", `${init?.method || "GET"} ${path.split("?")[0]} failed: ${error instanceof Error ? error.message : String(error)}`, error);
+    const isNetworkDrop =
+      error instanceof TypeError &&
+      (error.message === "Failed to fetch" ||
+        error.message.includes("NetworkError") ||
+        error.message.includes("Load failed"));
+    if (
+      !path.startsWith("/logs") &&
+      !path.startsWith("/intercept/pending") &&
+      !isNetworkDrop
+    ) {
+      reportClientError(
+        "network",
+        `${init?.method || "GET"} ${path.split("?")[0]} failed: ${error instanceof Error ? error.message : String(error)}`,
+        error
+      );
+    }
     throw error;
   }
   if (r.status === 401) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("android_lab_token");
       document.cookie = "android_lab_token=; path=/; max-age=0";
+      document.cookie = "ripple_token=; path=/; max-age=0";
       window.location.href = "/login";
     }
     throw new Error("Unauthorized");
@@ -172,7 +188,7 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
 // Token is appended as ?token= because SSE can't carry cookies cross-origin.
 // mockReport returns a canned Markdown report for the demo.
 function mockReport(_task?: string): string {
-  return `# ARTEX Penetration Test Report — Acme Corp\n\n## Overview\n- Scope: acme.com (www / admin / api / shop / vpn subdomains)\n- Confirmed findings: 8 (High 3 · Medium 3 · Low 2)\n- Engine mode: exploring\n\n## Key Findings\n1. **[High] Default admin credentials** admin.acme.com admin/admin123 → full admin access.\n2. **[High] SQL injection** www.acme.com/search?q= → read access to acme_prod.\n3. **[High] IDOR** api.acme.com/v1/orders?id= → access to other users' orders, phone numbers, and addresses.\n4. **[Medium] Reflected XSS**, **exposed .git source**, and **no login rate limit**.\n\n## Recommendations\n- Require password changes and MFA; disable default credentials.\n- Use parameterized queries and output encoding for search.\n- Enforce object-level API authorization and rotate weak JWT secrets.\n\n> Demo report generated from mock data for interface demonstration only.`;
+  return `# Ripple Penetration Test Report — Acme Corp\n\n## Overview\n- Scope: acme.com (www / admin / api / shop / vpn subdomains)\n- Confirmed findings: 8 (High 3 · Medium 3 · Low 2)\n- Engine mode: exploring\n\n## Key Findings\n1. **[High] Default admin credentials** admin.acme.com admin/admin123 → full admin access.\n2. **[High] SQL injection** www.acme.com/search?q= → read access to acme_prod.\n3. **[High] IDOR** api.acme.com/v1/orders?id= → access to other users' orders, phone numbers, and addresses.\n4. **[Medium] Reflected XSS**, **exposed .git source**, and **no login rate limit**.\n\n## Recommendations\n- Require password changes and MFA; disable default credentials.\n- Use parameterized queries and output encoding for search.\n- Enforce object-level API authorization and rotate weak JWT secrets.\n\n> Demo report generated from mock data for interface demonstration only.`;
 }
 
 export function sseUrl(path: string): string {
@@ -237,7 +253,7 @@ export const api = {
   login: (username: string, password: string) => post<{ token: string }>("/auth/login", { username, password }),
   initPassword: (password: string) => post<{ token: string }>("/auth/init", { password }),
   changePassword: (oldPassword: string, newPassword: string) =>
-    post<{ ok: boolean }>("/auth/change-password", { old_password: oldPassword, new_password: newPassword }),
+    post<{ ok: boolean; token?: string }>("/auth/change-password", { old_password: oldPassword, new_password: newPassword }),
 
   // ---- tasks ----
   tasks: () =>
@@ -555,12 +571,14 @@ export const api = {
   // exportFindings triggers a findings export and downloads the file. scope=selected passes ids (finding_id list);
   // scope=filtered passes the current filters (same filter fields as FindingQuery); scope=all ignores filters.
   exportFindings: async (opts: {
-    format: "md-single" | "md-zip" | "csv" | "json";
+    format: "md-single" | "md-zip" | "csv" | "json" | "pdf" | "docx";
     scope: "filtered" | "all" | "selected";
     filters?: Omit<FindingQuery, "page" | "pageSize">;
     ids?: string[];
+    title?: string;
   }) => {
     const p = new URLSearchParams({ format: opts.format, scope: opts.scope });
+    if (opts.title) p.set("title", opts.title);
     if (opts.scope === "selected") {
       p.set("ids", (opts.ids ?? []).join(","));
     } else if (opts.scope === "filtered" && opts.filters) {
@@ -874,6 +892,28 @@ export const api = {
     });
     if (!r.ok) throw new Error(`report: ${r.status}`);
     return r.text();
+  },
+  // exportReportDoc downloads the task's findings as a templated PDF or DOCX
+  // (firm VAPT layout, task name on the cover). The on-screen report is unchanged.
+  exportReportDoc: async (task: string, format: "pdf" | "docx") => {
+    if (MOCK) throw new Error("Report export is not available in demo mode");
+    const token = getToken();
+    const r = await fetch(`/api/report/export?task=${encodeURIComponent(task)}&format=${format}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!r.ok) throw new Error(`export failed (${r.status})`);
+    const blob = await r.blob();
+    const disp = r.headers.get("Content-Disposition") ?? "";
+    const m = disp.match(/filename="?([^"]+)"?/);
+    const filename = m?.[1] ?? `report.${format}`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   },
   chatMentions: (kind: string, query: string, signal?: AbortSignal, cursor = "") =>
     http<{ items: ChatMention[]; next_cursor?: string }>(

@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { auth } from "@/lib/auth";
 
 export function ChangePasswordDialog({
   open,
@@ -51,7 +52,10 @@ export function ChangePasswordDialog({
     setSaving(true);
     api
       .changePassword(oldPassword, newPassword)
-      .then(() => {
+      .then((res) => {
+        // The server rotates the signing key on change, invalidating every old token;
+        // adopt the fresh one it returns so this session stays logged in.
+        if (res?.token) auth.setToken(res.token);
         toast.success("Password changed");
         onOpenChange(false);
       })
@@ -66,7 +70,7 @@ export function ChangePasswordDialog({
           <DialogHeader>
             <DialogTitle>Change password</DialogTitle>
             <DialogDescription>
-              Username is fixed as <b>ARTEX</b>. Enter your current password to verify your identity. Existing login tokens remain valid until they expire.
+              Username is fixed as <b>Ripple</b>. Enter your current password to verify your identity. Changing your password signs out all other sessions immediately.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">

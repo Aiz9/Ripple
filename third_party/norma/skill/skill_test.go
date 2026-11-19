@@ -46,6 +46,21 @@ func TestSkillToolReturnsInstructions(t *testing.T) {
 	}
 }
 
+func TestGetNormalizesSeparatorAndCase(t *testing.T) {
+	r := NewRegistry(Skill{Name: "broken-function-level-authorization"})
+	for _, name := range []string{
+		"broken_function_level_authorization", // underscores
+		"Broken-Function-Level-Authorization", // case
+	} {
+		if _, ok := r.Get(name); !ok {
+			t.Fatalf("Get(%q) should match registered hyphen/lowercase skill", name)
+		}
+	}
+	if _, ok := r.Get("nonexistent-skill"); ok {
+		t.Fatal("Get should still miss on a genuinely unknown skill")
+	}
+}
+
 func TestParseRealYAML(t *testing.T) {
 	// Things the old hand-rolled parser could not handle: a quoted colon in the
 	// value, and a multi-line block scalar.

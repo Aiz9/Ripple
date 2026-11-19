@@ -16,7 +16,7 @@ import (
 // second-target measurement, not a re-run of the bank fixture.
 //
 // TestCrapiLiveIntegration runs the same differential against a REAL crAPI when
-// ARTEX_CRAPI_URL plus two bearer tokens and an owner resource path are supplied;
+// RIPPLE_CRAPI_URL plus two bearer tokens and an owner resource path are supplied;
 // it skips cleanly otherwise, so the suite stays green without crAPI and becomes a
 // live crAPI eval the moment one is pointed at it.
 
@@ -147,17 +147,17 @@ func TestEvalCrapiModeled(t *testing.T) {
 // TestCrapiLiveIntegration runs the real BOLA differential against a live crAPI
 // (or any target) when fully configured via env, else skips.
 //
-//	ARTEX_CRAPI_URL         base URL, e.g. http://localhost:8888
-//	ARTEX_CRAPI_TOKEN_OWNER    bearer token of the resource owner (identity A)
-//	ARTEX_CRAPI_TOKEN_ATTACKER bearer token of a non-owner (identity B)
-//	ARTEX_CRAPI_OWNER_PATH  owner's resource path, e.g. /identity/api/v2/vehicle/<vid>/location
+//	RIPPLE_CRAPI_URL         base URL, e.g. http://localhost:8888
+//	RIPPLE_CRAPI_TOKEN_OWNER    bearer token of the resource owner (identity A)
+//	RIPPLE_CRAPI_TOKEN_ATTACKER bearer token of a non-owner (identity B)
+//	RIPPLE_CRAPI_OWNER_PATH  owner's resource path, e.g. /identity/api/v2/vehicle/<vid>/location
 func TestCrapiLiveIntegration(t *testing.T) {
-	base := os.Getenv("ARTEX_CRAPI_URL")
-	owner := os.Getenv("ARTEX_CRAPI_TOKEN_OWNER")
-	attacker := os.Getenv("ARTEX_CRAPI_TOKEN_ATTACKER")
-	path := os.Getenv("ARTEX_CRAPI_OWNER_PATH")
+	base := os.Getenv("RIPPLE_CRAPI_URL")
+	owner := os.Getenv("RIPPLE_CRAPI_TOKEN_OWNER")
+	attacker := os.Getenv("RIPPLE_CRAPI_TOKEN_ATTACKER")
+	path := os.Getenv("RIPPLE_CRAPI_OWNER_PATH")
 	if base == "" || owner == "" || attacker == "" || path == "" {
-		t.Skip("live crAPI not configured; set ARTEX_CRAPI_URL/_TOKEN_OWNER/_TOKEN_ATTACKER/_OWNER_PATH to run")
+		t.Skip("live crAPI not configured; set RIPPLE_CRAPI_URL/_TOKEN_OWNER/_TOKEN_ATTACKER/_OWNER_PATH to run")
 	}
 	get := func(token string) (int, string) {
 		req, _ := http.NewRequest("GET", base+path, nil)
@@ -181,20 +181,20 @@ func TestCrapiLiveIntegration(t *testing.T) {
 
 // TestCrapiLiveJWT runs the production JWT forgery checks against a live target.
 //
-//	ARTEX_CRAPI_URL         base URL
-//	ARTEX_CRAPI_TOKEN_OWNER a genuine JWT the target accepts
-//	ARTEX_CRAPI_JWT_PATH    a protected GET endpoint (default /identity/api/v2/user/dashboard)
+//	RIPPLE_CRAPI_URL         base URL
+//	RIPPLE_CRAPI_TOKEN_OWNER a genuine JWT the target accepts
+//	RIPPLE_CRAPI_JWT_PATH    a protected GET endpoint (default /identity/api/v2/user/dashboard)
 //
 // A forged alg:none / tampered-signature token accepted while the genuine one is
 // accepted (and a garbage token is rejected) is a confirmed signature-verification
 // bypass.
 func TestCrapiLiveJWT(t *testing.T) {
-	base := os.Getenv("ARTEX_CRAPI_URL")
-	tok := os.Getenv("ARTEX_CRAPI_TOKEN_OWNER")
+	base := os.Getenv("RIPPLE_CRAPI_URL")
+	tok := os.Getenv("RIPPLE_CRAPI_TOKEN_OWNER")
 	if base == "" || tok == "" {
-		t.Skip("live crAPI not configured; set ARTEX_CRAPI_URL and ARTEX_CRAPI_TOKEN_OWNER to run")
+		t.Skip("live crAPI not configured; set RIPPLE_CRAPI_URL and RIPPLE_CRAPI_TOKEN_OWNER to run")
 	}
-	path := os.Getenv("ARTEX_CRAPI_JWT_PATH")
+	path := os.Getenv("RIPPLE_CRAPI_JWT_PATH")
 	if path == "" {
 		path = "/identity/api/v2/user/dashboard"
 	}

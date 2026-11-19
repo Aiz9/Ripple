@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -108,6 +108,7 @@ func (t *ToolSet) mobileRaceProbe() actool.CoreTool {
 				return errf("no captured exchange at history_index %d", *a.HistoryIndex), nil
 			}
 			req := ex[0]
+			recordCoverage(t.taskID, coverageKey(req), "race")
 			port := 443
 			if !req.TLS {
 				port = 80

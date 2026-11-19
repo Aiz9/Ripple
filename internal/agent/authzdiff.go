@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/devicelab"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -372,6 +372,7 @@ func (t *ToolSet) mobileAuthzDiff() actool.CoreTool {
 				return errf("no captured exchange at history_index %d", *a.HistoryIndex), nil
 			}
 			owner := ex[0]
+			recordCoverage(t.taskID, coverageKey(owner), "authz")
 			ownerStatus := httpStatus(owner.Response)
 			ownerBody := httpBody(owner.Response)
 			ownerIDs := resourceIDs(owner.Request)

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/notify"
+	"github.com/Aiz9/ripple/internal/notify"
 )
 
 // These tests require real PostgreSQL (skip without it): FOR UPDATE SKIP LOCKED, make_interval,

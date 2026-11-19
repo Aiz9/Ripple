@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/androidapk"
+	"github.com/Aiz9/ripple/internal/androidapk"
 )
 
 // --- 1. APK Inspector Tool ---

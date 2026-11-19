@@ -215,7 +215,7 @@ func TestLeaseSerialization(t *testing.T) {
 	a.Release() // idempotent
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	b, err := l.Acquire(ctx, "dev", "worker-b")
+	b, err := l.Acquire(ctx, "dev", "worker-b", 0)
 	if err != nil {
 		t.Fatalf("acquire after release failed: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestLeaseAcquireBlocksUntilRelease(t *testing.T) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		lease, err := l.Acquire(ctx, "dev", "b")
+		lease, err := l.Acquire(ctx, "dev", "b", 0)
 		if lease != nil {
 			lease.Release()
 		}
@@ -248,5 +248,22 @@ func TestIsJavaSerialized(t *testing.T) {
 	}
 	if IsJavaSerialized([]byte("plain")) {
 		t.Fatal("false positive")
+	}
+}
+
+func TestLeaseTTLReclaim(t *testing.T) {
+	l := NewLeases()
+	if _, ok := l.TryAcquireTTL("acct", "a", 20*time.Millisecond); !ok {
+		t.Fatal("first acquire should succeed")
+	}
+	if _, ok := l.TryAcquire("acct", "b"); ok {
+		t.Fatal("second acquire must fail while lease is live")
+	}
+	time.Sleep(30 * time.Millisecond)
+	if l.Holder("acct") != "" {
+		t.Fatal("lapsed lease should report no holder")
+	}
+	if _, ok := l.TryAcquire("acct", "b"); !ok {
+		t.Fatal("expired lease must be reclaimable")
 	}
 }

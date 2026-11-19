@@ -7,7 +7,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/Autumn-27/artex/internal/androidapk"
+	"github.com/Aiz9/ripple/internal/androidapk"
 	"log"
 	"net/http"
 	"os"
@@ -17,10 +17,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/agent"
-	"github.com/Autumn-27/artex/internal/config"
-	"github.com/Autumn-27/artex/internal/selfupdate"
-	"github.com/Autumn-27/artex/internal/server"
+	"github.com/Aiz9/ripple/internal/agent"
+	"github.com/Aiz9/ripple/internal/config"
+	"github.com/Aiz9/ripple/internal/selfupdate"
+	"github.com/Aiz9/ripple/internal/server"
 )
 
 // version is the build version, injected at release time via

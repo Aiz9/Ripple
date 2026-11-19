@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Autumn-27/artex/internal/staticx"
+	"github.com/Aiz9/ripple/internal/staticx"
 )
 
 func TestApplicableBypassesFlutterByLib(t *testing.T) {

@@ -236,8 +236,11 @@ func (c *BurpMCP) ProxyHistory(ctx context.Context, offset, count int) ([]Exchan
 // SendRequest replays/issues a raw HTTP/1.1 request through Burp (for authz/IDOR
 // checks — e.g. swapping an identity's token). Returns the raw response text.
 func (c *BurpMCP) SendRequest(ctx context.Context, host string, port int, tls bool, raw string) (string, error) {
+	// Wire names come from PortSwigger's SendHttp1Request (Tools.kt): content,
+	// targetHostname, targetPort, usesHttps. The server rejects unknown keys, so
+	// host/port/request would fail with "unknown 'host' key".
 	return c.Call(ctx, "send_http1_request", map[string]any{
-		"host": host, "port": port, "usesHttps": tls, "request": raw,
+		"targetHostname": host, "targetPort": port, "usesHttps": tls, "content": raw,
 	})
 }
 

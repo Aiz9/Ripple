@@ -7,9 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/Autumn-27/artex/internal/devicelab"
-	"github.com/Autumn-27/artex/internal/staticx"
+	"github.com/Aiz9/ripple/internal/devicelab"
+	"github.com/Aiz9/ripple/internal/staticx"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -159,12 +160,12 @@ func (t *ToolSet) mobileTrafficReplay() actool.CoreTool {
 			"tls":           map[string]any{"type": "boolean", "description": "use HTTPS (default true)"},
 			"request":       strField("raw HTTP/1.1 request (CRLF line endings); omit when using history_index"),
 			"history_index": intField("instead of request, replay the captured exchange at this absolute history index (from mobile_traffic_history) — its request/host/tls are used verbatim"),
-			"as_role":       strField("replay AS this registered identity (mobile_identity_set): its auth headers replace the request's, to test if identity A's object is reachable with identity B's credentials (IDOR/BOLA)"),
+			"as_role":       strField("replay AS this registered identity (mobile_identity_set): its auth headers replace the request's, to test if identity A's object is reachable with identity B's credentials (IDOR/BOLA). Identity tokens are STATIC — on single-session targets (a fresh login invalidates the prior token) re-register the identity from a fresh login right before replaying."),
 		},
 		"additionalProperties": false,
 	}
 	return writeTool("mobile_traffic_replay",
-		"Replay/issue a request through Burp. The IDOR/BOLA primitive: set history_index to re-send a captured exchange and as_role to send it as a DIFFERENT identity — then compare the response to the owner's baseline (mobile_traffic_history include_bodies). A 2xx alone does not prove a vulnerability; unauthorized DISCLOSURE or EFFECT does. Also use it for business-logic tests (tamper amounts/quantities/state) and injection/validation checks. Provide either `request`+`host` or `history_index`.",
+		"Replay/issue a request through Burp. The IDOR/BOLA primitive: set history_index to re-send a captured exchange and as_role to send it as a DIFFERENT identity — then compare the response to the owner's baseline (mobile_traffic_history include_bodies). A 2xx alone does not prove a vulnerability; unauthorized DISCLOSURE or EFFECT does. Also use it for business-logic tests (tamper amounts/quantities/state) and injection/validation checks. Provide either `request`+`host` or `history_index`. history_index is an ABSOLUTE position that shifts as the proxy captures/rotates traffic — re-read mobile_traffic_history immediately before an index-based replay, or pass `request`+`host` explicitly. All egress from this task (including Bash curl) is captured by the same Burp, so this tool and direct HTTP hit the identical proxy; prefer this tool so as_role identity-swapping and the authz sweep work.",
 		schema,
 		func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
 			var args struct {
@@ -291,7 +292,7 @@ func (t *ToolSet) mobileDiscoverRuntimeAPIs() actool.CoreTool {
 			bypasses := devicelab.ApplicableBypasses(facts, args.SourceSignals)
 			stateDir := strings.TrimSpace(os.Getenv("ANDROIDLAB_STATE_DIR"))
 			if stateDir == "" {
-				stateDir = filepath.Join(os.TempDir(), "artex-devicelab")
+				stateDir = filepath.Join(os.TempDir(), "ripple-devicelab")
 			}
 			eps, events, err := dev.DiscoverRuntimeAPIs(ctx, bypasses, args.Seconds, strings.TrimSpace(os.Getenv("ANDROIDLAB_FRIDA_SERVER")), stateDir)
 			if err != nil {
@@ -329,6 +330,8 @@ func (t *ToolSet) mobileTools() []actool.CoreTool {
 		// API relationship/dependency graph: objects + producer→consumer id edges,
 		// to chain flows and target BOLA.
 		t.mobileAPIGraph(),
+		// Enriched model: param/response TYPES, API version, discovery confidence.
+		t.mobileAPIModel(),
 		// OpenAPI/Swagger ingestion: documented endpoints as a distinct INFERRED
 		// layer, to exercise and to diff against observed (shadow detection).
 		t.mobileOpenAPIIngest(),
@@ -341,6 +344,12 @@ func (t *ToolSet) mobileTools() []actool.CoreTool {
 		// Injection: SSTI (evaluated-expression reflection) + error-based SQLi
 		// (DB error signature); confirmed by evidence, not status.
 		t.mobileInjectProbe(),
+		// Security misconfiguration (API8): permissive CORS + missing security headers.
+		t.mobileMisconfigProbe(),
+		// GraphQL: schema introspection enabled in production.
+		t.mobileGraphQLProbe(),
+		// Excessive data exposure (API3): sensitive data in responses.
+		t.mobileDataExposure(),
 		// Multi-identity store: register controlled test accounts (user_a, user_b,
 		// admin) so captured requests can be replayed as another principal for
 		// object/function authorization testing (IDOR/BOLA).
@@ -362,6 +371,10 @@ func (t *ToolSet) mobileTools() []actool.CoreTool {
 		// Authentication testing (JWT): static decode + active alg:none / tampered-
 		// signature replays; a finding only when a must-reject token is accepted.
 		t.mobileJWTProbe(),
+		// Auth lifecycle: brute-force/rate-limit throttling + session invalidation
+		// after logout/rotation.
+		t.mobileRateLimitProbe(),
+		t.mobileSessionProbe(),
 		// Race/TOCTOU: fire K identical requests concurrently; a finding only when
 		// more acceptances than legitimate occur (double-spend/limit bypass).
 		t.mobileRaceProbe(),
@@ -369,6 +382,10 @@ func (t *ToolSet) mobileTools() []actool.CoreTool {
 		// steps in a multi-step financial flow.
 		t.mobileWorkflowSet(),
 		t.mobileWorkflowCheck(),
+		// Out-of-band balance/ledger consistency: debit-matches + failed-txn-no-effect.
+		t.mobileBalanceCheck(),
+		// Per-endpoint testing-coverage ledger: what has been tested on each endpoint.
+		t.mobileCoverage(),
 		t.mobileListBypasses(),
 		// Runtime API discovery: Frida HTTP-client instrumentation captures the
 		// endpoints the app actually calls, including off-proxy and dynamically
@@ -384,5 +401,89 @@ func (t *ToolSet) mobileTools() []actool.CoreTool {
 		t.mobileUISwipe(),
 		t.mobileUIType(),
 		t.mobileUIKey(),
+		// Live-work coordination: acquire an exclusive lease before an authenticated
+		// login so two workers cannot log into the same account at once (task 774:
+		// concurrent logins evicted each other's sessions and corrupted live state).
+		t.liveLeaseAcquire(),
+		t.liveLeaseRelease(),
 	}
+}
+
+// liveLeaseDefaultTTL bounds a held live-work lease so a worker that forgets to
+// release (or crashes) cannot block the account for the rest of the task.
+const liveLeaseDefaultTTL = 10 * time.Minute
+
+// ReleaseLeases frees every live-work lease this ToolSet holds. Called when a
+// worker run ends so the account/device is free immediately, not after the TTL.
+func (t *ToolSet) ReleaseLeases() {
+	for res, lease := range t.liveLeases {
+		if lease != nil {
+			lease.Release()
+		}
+		delete(t.liveLeases, res)
+	}
+}
+
+func (t *ToolSet) leaseOwner() string {
+	if t.ownerNode > 0 {
+		return fmt.Sprintf("%s#%d", t.worker, t.ownerNode)
+	}
+	return t.worker
+}
+
+func (t *ToolSet) liveLeaseAcquire() actool.CoreTool {
+	return readTool("acquire_live_lease",
+		"Acquire an EXCLUSIVE lease on a shared live resource before using it — above all before an authenticated login to a shared test account, since a second login evicts the first worker's session. resource is a stable key you and peers agree on, e.g. \"account:98XXXXXXXX\" or \"device:<serial>\". Non-blocking: returns acquired=true, or acquired=false with the current holder (then do other work and retry, or pick a different account). Call release_live_lease when done; the lease also auto-expires after ttl_seconds (default 600) so a crash cannot deadlock the resource.",
+		map[string]any{"type": "object", "properties": map[string]any{
+			"resource":    strField("Stable resource key, e.g. account:98XXXXXXXX or device:<serial>"),
+			"ttl_seconds": intField("Auto-expiry in seconds (default 600, max 3600)"),
+		}, "required": []any{"resource"}, "additionalProperties": false},
+		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
+			var a struct {
+				Resource   string `json:"resource"`
+				TTLSeconds int    `json:"ttl_seconds"`
+			}
+			_ = json.Unmarshal(in, &a)
+			res := strings.TrimSpace(a.Resource)
+			if res == "" {
+				return actool.Errorf("resource is required"), nil
+			}
+			ttl := liveLeaseDefaultTTL
+			if a.TTLSeconds > 0 {
+				ttl = time.Duration(min(a.TTLSeconds, 3600)) * time.Second
+			}
+			if t.liveLeases != nil && t.liveLeases[res] != nil {
+				return actool.Text(fmt.Sprintf("acquired=true (you already hold %q)", res)), nil
+			}
+			lease, ok := devicelab.GlobalLeases().TryAcquireTTL(res, t.leaseOwner(), ttl)
+			if !ok {
+				return actool.Text(fmt.Sprintf("acquired=false resource=%q held_by=%q — do not log in; do other work and retry, or use a different account", res, devicelab.GlobalLeases().Holder(res))), nil
+			}
+			if t.liveLeases == nil {
+				t.liveLeases = map[string]*devicelab.Lease{}
+			}
+			t.liveLeases[res] = lease
+			return actool.Text(fmt.Sprintf("acquired=true resource=%q ttl=%s — release_live_lease when done", res, ttl)), nil
+		})
+}
+
+func (t *ToolSet) liveLeaseRelease() actool.CoreTool {
+	return readTool("release_live_lease",
+		"Release a live-work lease you acquired with acquire_live_lease (idempotent). Call it as soon as you finish with the resource (e.g. after logout) so a peer worker can use it.",
+		map[string]any{"type": "object", "properties": map[string]any{
+			"resource": strField("The resource key you acquired"),
+		}, "required": []any{"resource"}, "additionalProperties": false},
+		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
+			var a struct {
+				Resource string `json:"resource"`
+			}
+			_ = json.Unmarshal(in, &a)
+			res := strings.TrimSpace(a.Resource)
+			if lease := t.liveLeases[res]; lease != nil {
+				lease.Release()
+				delete(t.liveLeases, res)
+				return actool.Text(fmt.Sprintf("released %q", res)), nil
+			}
+			return actool.Text(fmt.Sprintf("no lease held for %q (already released or never acquired)", res)), nil
+		})
 }

@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/internal/db"
+	"github.com/Aiz9/ripple/internal/db"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/transcript"
 )
@@ -518,15 +518,43 @@ func (c *Compactor) compress(ctx context.Context, g *coldGraph, b block, nodeByI
 		MaxTokens: 1500,
 		Thinking:  "disabled",
 	}
-	msg, _, _, err := c.prov.Complete(ctx, req)
-	if err != nil {
-		return "", err
+	// Retry transient empty bodies: the model occasionally yields a thinking-only /
+	// content-free turn. A bare error here left the block un-compacted, so the next
+	// compaction cycle re-attempted the same block indefinitely (task 774: 509
+	// compaction records, dominated by "empty body from model" on a handful of blocks).
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		msg, _, _, err := c.prov.Complete(ctx, req)
+		if err != nil {
+			lastErr = err
+			if ctx.Err() != nil {
+				return "", err
+			}
+			continue
+		}
+		if body := strings.TrimSpace(msg.Text()); body != "" {
+			return body, nil
+		}
+		lastErr = fmt.Errorf("empty body from model")
 	}
-	body := strings.TrimSpace(msg.Text())
-	if body == "" {
-		return "", fmt.Errorf("empty body from model")
+	// Still nothing usable: emit a deterministic digest so the block is compacted and
+	// not re-tried every cycle. Degraded (lists members instead of integrating them),
+	// but terminal — which a forever-retried LLM failure is not.
+	if ctx.Err() != nil {
+		return "", lastErr
 	}
-	return body, nil
+	return fallbackDigest(b, nodeByID), nil
+}
+
+// fallbackDigest builds a deterministic block summary from member node summaries,
+// used when the compression LLM call cannot produce a body.
+func fallbackDigest(b block, nodeByID map[int64]*db.Node) string {
+	var sb strings.Builder
+	sb.WriteString("[Compacted without model summary — member conclusions listed verbatim]:\n")
+	for _, id := range b.Members {
+		fmt.Fprintf(&sb, "- #%d %s\n", id, nodeSummary(nodeByID[id]))
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 // compressionSystemPrompt is the §4 body prompt.
